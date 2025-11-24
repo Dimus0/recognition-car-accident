@@ -2,3 +2,7 @@ env/
 article/
 dataset/
 text.txt
+cadp_dataset/
+runs/
+video/
+dataset/
