@@ -5,4 +5,7 @@ text.txt
 cadp_dataset/
 runs/
 video/
-dataset/
+data/
+*.rar
+*.zip
+*.tar.gz
