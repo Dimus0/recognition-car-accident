@@ -9,3 +9,8 @@ data/
 *.rar
 *.zip
 *.tar.gz
+*.pt
+*.pdf
+*.mp4
+*.jpg
+*.png
