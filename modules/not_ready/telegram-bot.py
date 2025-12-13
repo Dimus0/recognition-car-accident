@@ -1,0 +1,4 @@
+API_TOKEN = "8471967971:AAF9_yMdxz8hIufUZRlrN7KTdCH1PUhcp78"
+NAME_BOT = "accidentdetectionTESTbot"
+
+OWNER_ID = 743375979
