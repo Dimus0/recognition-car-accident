@@ -18,7 +18,7 @@ def show_frame(frame):
 
 
 # --- Load image correctly ---
-image_path = r"D:\project\bachelor\modules\trach\frame1.png"
+image_path = r"E:\personalproject\bachelor\modules\additional_func\frame1.png"
 frame = cv2.imread(image_path)
 
 if frame is None:

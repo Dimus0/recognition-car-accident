@@ -6,20 +6,24 @@ import logging
 import os
 from ultralytics import YOLO
 from collections import defaultdict, deque
-from model.src.cnn import AccidentCNN
-from modules.utils import load_models,TrafficAnalyzer,process_cnn_batch,is_inside_roi,compute_iou
-
+from modules.utils import *
+from modules.analyzer import TrafficAnalyzer
+from modules.accidenttracker import AccidentStateTracker
+from modules.accidentcapture import AccidentFrameCapture
 
 from deep_sort_realtime.deepsort_tracker import DeepSort
 
 
 
 # ---------------------- CONFIG ----------------------
+
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 LOG_DIR = r'D:\project\bachelor\logs'
 OUTPUT_DIR = os.path.join(LOG_DIR, "output_result")
 YOLO_MODEL_PATH = r"D:\project\bachelor\model\weights\yolov8-fine-tuning-15.pt"
-CNN_WEIGHTS_PATH = r"D:\project\bachelor\model\weights\accident_cnn_model.pt"
+CNN_WEIGHTS_PATH = r"D:\project\bachelor\model\weights\accident_cnn_model.pth"
+SUMMARY_STATICTICS = r"D:\project\bachelor\logs\statictics.txt"
+
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -45,7 +49,8 @@ logger.info("Models loaded successfully.")
 cnn_transforms = transforms.Compose([
     transforms.ToPILImage(),
     transforms.Resize((224, 224)),
-    transforms.ToTensor()
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
 
@@ -57,10 +62,11 @@ def accident_detection(input_video):
     output_path = os.path.join(OUTPUT_DIR, "result.mp4")
     out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height))
 
-    # -------- Лінії після яких відбувається трекінг --------
-    LINE_YELLOW = ((880, 582), (1021, 585))
-    LINE_GREEN = ((1068, 577), (1184, 571))
+    # -------- Лінії після яких відбувається трекінг --------)
 
+    '''
+        Область для відео із шосе
+    '''
     ROI_POLYGON = np.array([
         (881, 582),
         (1018, 587),
@@ -68,12 +74,26 @@ def accident_detection(input_video):
         (226, 892)
     ], dtype=np.int32)
 
-    lines = [LINE_YELLOW, LINE_GREEN]
-    # -------- END --------
+    '''
+        Область для відео із ДТП
+    '''
+    # ROI_POLYGON = np.array([
+    #     (9, 216),
+    #     (19, 996),
+    #     (1450, 791),
+    #     (511, 230)
+    # ], dtype=np.int32)
 
+    # -------- END --------
     analyzer = TrafficAnalyzer()
+
+    accident_capture = AccidentFrameCapture(OUTPUT_DIR)
+    accident_state = AccidentStateTracker()
+
     frame_count = 0
     last_results = []
+
+    cnn_results_cache = {}
 
     while cap.isOpened():
         ret, frame = cap.read()
@@ -82,18 +102,7 @@ def accident_detection(input_video):
         
         frame_count += 1
 
-        # Малюємо лінії
-        # cv2.line(frame, LINE_YELLOW[0], LINE_YELLOW[1], (0, 255, 255), 3)
-        # cv2.line(frame, LINE_GREEN[0], LINE_GREEN[1], (0, 255, 0), 3)
-
         cv2.polylines(frame, [ROI_POLYGON], isClosed=True, color=(255, 0, 0), thickness=2)
-
-        # Зона активації перед лінією
-        for line, color in zip(lines, [(0,255,255),(0,255,0)]):
-            cv2.line(frame, (line[0][0], line[0][1]-80), (line[1][0], line[1][1]-80), color, 1)
-
-        # YOLO трекінг
-        # results = yolo_model.track(frame, persist=True, verbose=False, conf=0.3, tracker="bytetrack.yaml")
 
         results = yolo_model(frame, conf=0.4, verbose=False)
 
@@ -106,113 +115,246 @@ def accident_detection(input_video):
 
                 if conf < 0.3:
                     continue
+                
+                center_x = int((x1 + x2) / 2)
+                bottom_y = int(y2)
 
-                detections.append((
-                    [x1,y1, x2-x1, y2-y1],
-                    conf,
-                    cls
-                ))
+
+                if is_point_in_polygon((center_x, bottom_y), ROI_POLYGON):
+                    detections.append((
+                        [x1, y1, x2 - x1, y2 - y1], # XYWH format for DeepSort
+                        conf,
+                        cls
+                    ))
         
         tracks = deepsort.update_tracks(detections, frame=frame)
 
         boxes = []
         ids = []
+        active_tracks_objects = []
 
         for track in tracks:
             if not track.is_confirmed():
                 continue
 
             l, t, r, b = map(int, track.to_ltrb())
+            tid = track.track_id
+
+            if not is_point_in_polygon((int((l+r)/2), int(b)), ROI_POLYGON): continue
+
             boxes.append((l, t, r, b))
-            ids.append(track.track_id)
+            ids.append(tid)
+            active_tracks_objects.append(track)
         
         analyzer.update_tracks(boxes, ids)
         analyzer.clean_old_tracks(ids)
-        analyzer.activate_near_line(boxes, ids, lines, threshold=80)
 
-        # ---------- DRAW TRAJECTORIES ----------
-        for tid, points in analyzer.track_history.items():
-            if tid not in analyzer.active_ids:
-                continue
+        crops_to_process = []
+        ids_to_process = []
+        box_map_for_cnn = []
 
-            if len(points) < 2:
-                continue
+        collision_risky_ids = analyzer.predict_collision(ids)
 
-            pts = np.array(points, dtype=np.int32).reshape((-1, 1, 2))
+        accident_state.cleanup_old_accidents(frame_count)
 
-            cv2.polylines(
-                frame,
-                [pts],
-                isClosed=False,
-                color=(255, 0, 0),   # синя траєкторія
-                thickness=2
-            )
+        for i, tid in enumerate(ids):
+            x1, y1, x2, y2 = boxes[i]
+            
+            # Евристика для запуску CNN:
+            should_run_cnn = False
+            
+            # A. Якщо аналізатор каже про ризик зіткнення
+            if accident_state.is_accident_active(tid, frame_count):
+                should_run_cnn = True
+            
+            # B. Кінематична аномалія (раптова зупинка)
+            elif tid in collision_risky_ids:
+                should_run_cnn = True
+                
+            # C. Heartbeat (запускаємо рідко для профілактики, наприклад, кожні 15 кадрів)
+            elif check_kinematic_anomalies(analyzer.track_history, tid, boxes[i]):
+                # Перевіряємо чи є інші авто поруч
+                nearby_vehicles = count_nearby_vehicles(boxes, i, distance_threshold=150)
+                
+                # Запускаємо CNN тільки якщо є авто поруч
+                if nearby_vehicles > 0:
+                    should_run_cnn = True
 
-            # ID біля останньої точки
-            cx, cy = points[-1]
-            cv2.putText(
-                frame,
-                f"ID {tid}",
-                (cx + 5, cy - 5),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (255, 0, 0),
-                2
-            )
+            elif frame_count % 30 == 0:  # Знижена частота
+                should_run_cnn = True
+            
+            if should_run_cnn:
+                crop = frame[y1:y2, x1:x2]
+                if crop.size > 0:
+                    crops_to_process.append(crop)
+                    ids_to_process.append(tid)
+                    box_map_for_cnn.append((x1, y1, x2, y2))
 
-        
-        crops, boxes_filtered, ids_filtered = [], [], []
+            # Якщо треба запускати CNN
+            if should_run_cnn:
+                crop = frame[y1:y2, x1:x2]
+                if crop.size > 0:
+                    crops_to_process.append(crop)
+                    ids_to_process.append(tid)
+                    box_map_for_cnn.append((x1, y1, x2, y2))
 
-        for (x1, y1, x2, y2), tid in zip(boxes, ids):
+        accident_detected_this_frame = False
+        accident_objects = []
 
-            if not is_inside_roi((x1, y1, x2, y2), ROI_POLYGON):
-                continue
+        # 6. CNN Inference (тільки якщо є "підозрілі" кандидати)
+        if crops_to_process:
+            scores = process_cnn_batch(crops_to_process, cnn_transforms, cnn_model)
+            
+            for (x1, y1, x2, y2), score, tid in zip(box_map_for_cnn, scores, ids_to_process):
+                # Оновлюємо кеш результатів
 
-            if tid not in analyzer.active_ids:
-                continue
+                accident_state.update_score(tid, score, frame_count)
+                is_already_confirmed = accident_state.is_confirmed_accident(tid)
+                should_confirm = accident_state.should_confirm_accident(tid, score)
 
-            if not analyzer.is_moving_towards_camera(tid):
-                continue
-
-            crop = frame[y1:y2, x1:x2]
-
-            if crop.size > 0:
-                crops.append(crop)
-                boxes_filtered.append((x1, y1, x2, y2))
-                ids_filtered.append(tid)
-
-        collision_risky_ids = analyzer.predict_collision(ids_filtered)
-        current_results = []
-
-        if crops and frame_count % 3 == 0:
-            scores = process_cnn_batch(crops,cnn_transforms,cnn_model)
-            for (x1, y1, x2, y2), score, tid in zip(boxes_filtered, scores, ids_filtered):
-                if score > 0.90:
-                    color, label = (0, 0, 255), f"ACCIDENT {score:.2f}"
-                    logger.warning(f"[FRAME {frame_count}] ACCIDENT | ID={tid} | SCORE={score:.2f}")
-                elif tid in collision_risky_ids and score > 0.77:
-                    color, label = (0, 255, 255), "WARNING"
-                    logger.info(f"[FRAME {frame_count}] WARNING | ID={tid}")
+                if is_already_confirmed:
+                    # Аварія вже підтверджена - показуємо як аварію незалежно від поточного скору
+                    label = f"ACCIDENT {score:.2f}"
+                    color = (0, 0, 255)  # Red
+                    
+                    accident_detected_this_frame = True
+                    accident_objects.append({
+                        'track_id': tid,
+                        'bbox': (x1, y1, x2, y2),
+                        'confidence': score,
+                        'type': 'primary'
+                    })
+                    
+                    logger.info(f"[FRAME {frame_count}] CONFIRMED ACCIDENT | ID={tid} | SCORE={score:.2f}")
+                
+                elif should_confirm and score > 0.85:
+                    # НОВА АВАРІЯ - підтверджуємо
+                    accident_state.confirm_accident(tid, frame_count)
+                    
+                    label = f"ACCIDENT {score:.2f}"
+                    color = (0, 0, 255)  # Red
+                    
+                    accident_detected_this_frame = True
+                    accident_objects.append({
+                        'track_id': tid,
+                        'bbox': (x1, y1, x2, y2),
+                        'confidence': score,
+                        'type': 'primary'
+                    })
+                    
+                    logger.warning(f"[FRAME {frame_count}] NEW ACCIDENT DETECTED | ID={tid} | SCORE={score:.2f}")
+                
+                elif tid in collision_risky_ids and score > 0.70:
+                    # Ризик аварії - WARNING
+                    label = f"WARNING {score:.2f}"
+                    color = (0, 255, 255)  # Yellow
+                    
+                    # Додаємо як вторинний об'єкт якщо є основна аварія
+                    if accident_detected_this_frame:
+                        accident_objects.append({
+                            'track_id': tid,
+                            'bbox': (x1, y1, x2, y2),
+                            'confidence': score,
+                            'type': 'secondary'
+                        })
+                    
+                    logger.info(f"[FRAME {frame_count}] WARNING | ID={tid} | SCORE={score:.2f}")
+                
                 else:
-                    color, label = (0, 255, 0), f"NORMAL {score:.2f}"
-                current_results.append((x1, y1, x2, y2, color, label))
-            last_results = current_results
+                    # Нормальна ситуація
+                    label = f"NORMAL {score:.2f}"
+                    color = (0, 255, 0)  # Green
+                    # logger.warning(f"[FRAME {frame_count}] NORMAL | ID={tid} | SCORE={score:.2f}")
+                
+                cnn_results_cache[tid] = (color, label, score)
 
-        for (x1, y1, x2, y2, color, label) in last_results:
+        if accident_detected_this_frame and accident_objects:
+            primary_positions = [obj['bbox'] for obj in accident_objects if obj['type'] == 'primaty']
+
+            for i, tid in enumerate(ids):
+                if tid not in [obj['track_id'] for obj in accident_objects]:
+                    x1,y1,x2,y2 = boxes[i]
+
+                    for px1,py1,px2,py2 in primary_positions:
+                        distance = calculate_box_distance(
+                            (x1,y1,x2,y2),
+                            (px1,py1,px2,py2)
+                        )
+
+                        if distance < 200:
+                            accident_objects.append({
+                                'track_id': tid,
+                                'bbox': (x1,x2,y1,y2),
+                                'confidence': cnn_results_cache.get(tid, (None,None,0.0))[2],
+                                'type': 'secondary'
+                            })
+                            break
+            should_save = any(
+                accident_capture.should_save_accident(obj['track_id'],frame_count)
+                for obj in accident_objects if obj['type'] == 'primary'
+            )
+
+            if should_save:
+
+                saved_path = accident_capture.save_accident_frame(
+                    frame=frame,
+                    frame_number=frame_count,
+                    accident_objects=accident_objects,
+                    video_path=input_video
+                )
+
+                logger.critical(
+                    f"[ACCIDENT SAVED] Frame {frame_count} |"
+                    f"Vehicles: {len(accident_objects)} |"
+                    f"Saved to: {saved_path}"
+                )
+
+
+        # 7. Візуалізація (Draw Loop)
+        for i, tid in enumerate(ids):
+            x1, y1, x2, y2 = boxes[i]
+            
+            # Малюємо траєкторію
+            points = analyzer.track_history.get(tid, [])
+            if len(points) > 1:
+                pts = np.array(points, dtype=np.int32).reshape((-1, 1, 2))
+                cv2.polylines(frame, [pts], isClosed=False, color=(255, 0, 0), thickness=2)
+
+            # Беремо дані з кешу (або дефолтні, якщо CNN ще не запускалась для цього ID)
+            if tid in cnn_results_cache:
+                color, label, score = cnn_results_cache[tid]
+            else:
+                color, label = (255, 255, 255), f"ID {tid}" # White defaults
+
+            # Малюємо бокс і текст
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-            cv2.putText(frame, label, (x1, y1-5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+            cv2.putText(frame, label, (x1, y1-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
         out.write(frame)
 
     cap.release()
     out.release()
+
+    summary = accident_capture.get_accident_summary()
+
+    print(f"\n {'*'*50}")
+    print("ACCIDENT DETECTION SUMMARY")
+    print(f"Total accidents detected: {summary['total_accidents']}")
+    print(f"Total vehicles involved: {summary.get('total_vehicles_involved', 0)}")
+    print(f"Unique vehicles: {summary.get('unique_vehicles', 0)}")
+    print(f"Accidents saved to: {accident_capture.accidents_dir}")
+    print(f"Metadata log: {accident_capture.metadata_file}")
+    print(f"\n {'*'*50}")
+
+    
     print(f"Processing finished. Output saved to: {output_path}")
+    logger.info(f"Processing finished. Output saved to: {output_path}")
+
     return output_path
+
 
 # ---------------------- ENTRY POINT ----------------------
 if __name__ == "__main__":
-    import sys
-    if len(sys.argv) < 2:
-        print("Usage: python run.py <video_path>")
-        exit()
-    accident_detection(sys.argv[1])
+    video_path = r"D:\project\test_video.mp4"
+    # video_path = r"D:\project\videoplayback.mp4"
+    accident_detection(video_path)

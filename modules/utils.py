@@ -3,7 +3,8 @@ import numpy as np
 import torch
 from torchvision import transforms
 from collections import defaultdict, deque
-from bachelor.model.src.cnn import AccidentCNN
+from model.src.cnn import ImproveAccidentCNN
+from modules.analyzer import TrafficAnalyzer
 from ultralytics import YOLO
 from deep_sort_realtime.deepsort_tracker import DeepSort
 
@@ -24,7 +25,7 @@ def compute_iou(boxA, boxB):
 
 
 def load_models(DEVICE,CNN_WEIGHTS_PATH,YOLO_MODEL_PATH):
-    cnn = AccidentCNN().to(DEVICE)
+    cnn = ImproveAccidentCNN().to(DEVICE)
     cnn.load_state_dict(torch.load(CNN_WEIGHTS_PATH, map_location=DEVICE))
     cnn.eval()
 
@@ -42,95 +43,6 @@ def load_models(DEVICE,CNN_WEIGHTS_PATH,YOLO_MODEL_PATH):
     # logger.info("Models loaded successfully.")
     return cnn, yolo,deepsort
 
-
-class TrafficAnalyzer:
-    def __init__(self, max_history=25, collision_distance=80,min_motion=3):
-        self.track_history = defaultdict(lambda: deque(maxlen=max_history))
-        self.active_ids = set()
-        self.collision_distance = collision_distance
-        self.min_motion = min_motion
-
-    def update_tracks(self, boxes, ids):
-        for (x1, y1, x2, y2), tid in zip(boxes, ids):
-            cx = int((x1 + x2) / 2)
-            cy = int((y1 + y2) / 2)
-            self.track_history[tid].append((cx, cy))
-
-    def point_to_line_distance(self, px, py, x1, y1, x2, y2):
-        A = px - x1
-        B = py - y1
-        C = x2 - x1
-        D = y2 - y1
-
-        dot = A * C + B * D
-        len_sq = C * C + D * D
-
-        if len_sq == 0:
-            return np.hypot(px - x1, py - y1)
-
-        param = dot / len_sq
-
-        if param < 0:
-            xx, yy = x1, y1
-        elif param > 1:
-            xx, yy = x2, y2
-        else:
-            xx = x1 + param * C
-            yy = y1 + param * D
-
-        return np.hypot(px - xx, py - yy)
-
-    def activate_near_line(self, boxes, ids, lines, threshold=80):
-        for (x1, y1, x2, y2), tid in zip(boxes, ids):
-            cx = (x1 + x2) / 2
-            cy = (y1 + y2) / 2
-
-            for (lx1, ly1), (lx2, ly2) in lines:
-                dist = self.point_to_line_distance(cx, cy, lx1, ly1, lx2, ly2)
-                if dist < threshold:
-                    self.active_ids.add(tid)
-
-    def predict_collision(self, ids=None):
-        risky = set()
-        ids = list(ids) if ids is not None else list(self.active_ids)
-
-        for i in range(len(ids)):
-            for j in range(i + 1, len(ids)):
-                a, b = ids[i], ids[j]
-
-                if a not in self.track_history or b not in self.track_history:
-                    continue
-
-                if len(self.track_history[a]) < 5 or len(self.track_history[b]) < 5:
-                    continue
-
-                p1 = np.array(self.track_history[a][-1])
-                p2 = np.array(self.track_history[b][-1])
-
-                if np.linalg.norm(p1 - p2) < self.collision_distance:
-                    risky.add(a)
-                    risky.add(b)
-
-        return risky
-
-    def clean_old_tracks(self, current_ids):
-        for tid in list(self.track_history.keys()):
-            if tid not in current_ids:
-                del self.track_history[tid]
-                self.active_ids.discard(tid)
-
-    def is_moving_towards_camera(self, tid):
-        """
-        True якщо обʼєкт рухається в камеру
-        """
-        pts = self.track_history.get(tid, [])
-        if len(pts) < self.min_motion:
-            return False
-
-        y_start = pts[0][1]
-        y_end = pts[-1][1]
-
-        return (y_end - y_start) > 10  # поріг у пікселях
 
 def process_cnn_batch(crops,cnn_transforms,cnn_model):
     if not crops:
@@ -158,3 +70,79 @@ def is_inside_roi(bbox, polygon):
     cy = int((y1 + y2) / 2)
 
     return cv2.pointPolygonTest(polygon, (cx, cy), False) >= 0
+
+
+
+# add 19.12.2025
+def get_box_center(x1, y1, x2, y2):
+    return int((x1 + x2) / 2), int((y1 + y2) / 2)
+
+def is_point_in_polygon(point, polygon):
+    # point має бути (x, y), polygon - np.array
+    return cv2.pointPolygonTest(polygon, point, False) >= 0
+
+def check_kinematic_anomalies(track_history, tid, current_box):
+    """
+    Перевіряє, чи об'єкт різко зупинився або поводиться дивно.
+    Повертає True, якщо поведінка підозріла.
+    """
+    history = track_history.get(tid, [])
+    if len(history) < 5:
+        return False
+    
+    # Останні 5 точок
+    recent_points = [history[len(history) - i] for i in range(1, 6)]
+    recent_points.reverse()
+    
+    # Розрахунок середнього переміщення (швидкості)
+    displacements = []
+    for i in range(len(recent_points) - 1):
+        p1 = np.array(recent_points[i])
+        p2 = np.array(recent_points[i+1])
+        dist = np.linalg.norm(p2 - p1)
+        displacements.append(dist)
+    
+    avg_speed = np.mean(displacements)
+    
+    # ЕВРИСТИКА: Якщо швидкість дуже мала (машина стала посеред дороги), але це не край кадру
+    # Поріг швидкості треба підбирати під відео (тут умовно < 2 пікселів за кадр)
+    if avg_speed < 2.0: 
+        return True
+        
+    return False
+
+
+def calculate_box_distance(box1, box2):
+    """Обчислює відстань між центрами двох боксів"""
+    x1_center = (box1[0] + box1[2]) / 2
+    y1_center = (box1[1] + box1[3]) / 2
+    
+    x2_center = (box2[0] + box2[2]) / 2
+    y2_center = (box2[1] + box2[3]) / 2
+    
+    return np.sqrt((x1_center - x2_center)**2 + (y1_center - y2_center)**2)
+
+
+def count_nearby_vehicles(boxes, current_idx, distance_threshold=150):
+    """
+    Підраховує кількість авто поблизу від поточного
+    """
+    current_box = boxes[current_idx]
+    cx = (current_box[0] + current_box[2]) / 2
+    cy = (current_box[1] + current_box[3]) / 2
+    
+    nearby_count = 0
+    
+    for i, box in enumerate(boxes):
+        if i == current_idx:
+            continue
+        
+        bx = (box[0] + box[2]) / 2
+        by = (box[1] + box[3]) / 2
+        
+        distance = np.sqrt((cx - bx)**2 + (cy - by)**2)
+        
+        if distance < distance_threshold:
+            nearby_count += 1
+    
+    return nearby_count
