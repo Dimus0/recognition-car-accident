@@ -2,7 +2,7 @@ import cv2
 import json
 import os
 from datetime import datetime
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict,Union
 from collections import defaultdict, deque
 
 class AccidentStateTracker:

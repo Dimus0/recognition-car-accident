@@ -1,9 +1,21 @@
+import cv2
+import torch
+from torchvision import transforms
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.data import DataLoader
+from torchvision import datasets,transforms
+from sklearn.metrics import classification_report, confusion_matrix
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+import os
+from collections import Counter
+
 
 class ImproveAccidentCNN(nn.Module):
-    def __init__(self,dropout_rate=0.4):
+    def __init__(self,dropout_rate=0.2):
         super().__init__()
 
         self.conv = nn.Sequential(
@@ -57,6 +69,7 @@ class ImproveAccidentCNN(nn.Module):
             nn.BatchNorm1d(256),
             nn.ReLU(),
             nn.Dropout(dropout_rate),
+
             nn.Linear(256,2)
         )
 
