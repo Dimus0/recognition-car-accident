@@ -1,15 +1,15 @@
 import cv2
 import torch
 from torchvision import transforms
-from model.src.cnn import AccidentCNN
+from cnn import ImproveAccidentCNN
 import os
 
 # ---------------- CONFIG ----------------
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-CNN_WEIGHTS_PATH = r"D:\project\bachelor\model\weights\accident_cnn_model.pt"
+CNN_WEIGHTS_PATH = r"D:\project\bachelor\model\weights\accident_cnn_model.pth"
 
 # ---------------- LOAD MODEL ----------------
-cnn_model = AccidentCNN().to(DEVICE)
+cnn_model = ImproveAccidentCNN().to(DEVICE)
 cnn_model.load_state_dict(torch.load(CNN_WEIGHTS_PATH, map_location=DEVICE))
 cnn_model.eval()  # важливо для правильної роботи
 
@@ -59,4 +59,4 @@ def classify_image(image_path, threshold=0.65):
 
 # ---------------- ENTRY POINT ----------------
 if __name__ == "__main__":
-    classify_image(r"D:\project\bachelor\1.jpg")
+    classify_image(r"D:\project\bachelor\model\src\image_of_frame\frame_00102.jpg")

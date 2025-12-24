@@ -72,7 +72,6 @@ def is_inside_roi(bbox, polygon):
     return cv2.pointPolygonTest(polygon, (cx, cy), False) >= 0
 
 
-
 # add 19.12.2025
 def get_box_center(x1, y1, x2, y2):
     return int((x1 + x2) / 2), int((y1 + y2) / 2)
@@ -146,3 +145,36 @@ def count_nearby_vehicles(boxes, current_idx, distance_threshold=150):
             nearby_count += 1
     
     return nearby_count
+
+
+def get_interaction_crop(box1, box2, frame, padding=20):
+    x1 = min(box1[0], box2[0]) - padding
+    y1 = min(box1[1], box2[1]) - padding
+    x2 = max(box1[2], box2[2]) + padding
+    y2 = max(box1[3], box2[3]) + padding
+    
+    # Clamping coordinates
+    h, w, _ = frame.shape
+    x1, y1 = max(0, x1), max(0, y1)
+    x2, y2 = min(w, x2), min(h, y2)
+    
+    return frame[y1:y2, x1:x2]
+
+
+def calculate_ttc(pos_a, vel_a, pos_b, vel_b):
+    """
+    pos: np.array([x, y]) - центроїди
+    vel: np.array([vx, vy]) - вектори швидкості
+    """
+    rel_pos = pos_b - pos_a
+    rel_vel = vel_b - vel_a
+    
+    # Проекція відносної швидкості на вектор відстані
+    speed_rel_towards = -np.dot(rel_pos, rel_vel) / np.linalg.norm(rel_pos)
+    
+    if speed_rel_towards <= 0:
+        return float('inf') # Об'єкти віддаляються
+        
+    distance = np.linalg.norm(rel_pos)
+    ttc = distance / speed_rel_towards
+    return ttc
