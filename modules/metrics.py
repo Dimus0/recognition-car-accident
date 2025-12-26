@@ -13,48 +13,43 @@ from sklearn.metrics import roc_curve, auc, precision_recall_curve
 
 
 class MetricsTracker:
-    """
-    Розширений клас для збору та аналізу метрик роботи системи
-    Включає: Precision, Recall, F1, mAP, MOTA, IDF1, ROC-AUC
-    """
     
     def __init__(self, ground_truth_path: Optional[str] = None):
-        """
-        Args:
-            ground_truth_path: Шлях до файлу з ground truth анотаціями
-        """
         self.ground_truth_path = ground_truth_path
         self.ground_truth = self._load_ground_truth() if ground_truth_path else None
         self.reset()
+
+    def add_ground_truth_frame(self, frame_num: int, vehicles: list, bboxes: list, accident: bool):
+        if self.ground_truth is None:
+            self.ground_truth = {"frame_annotations": {}}
+
+        self.ground_truth["frame_annotations"][str(frame_num)] = {
+            "vehicles": vehicles,
+            "bboxes": bboxes,
+            "accident": accident
+    }
+
+    # одразу зберігаємо
+        with open(self.ground_truth_path, "w", encoding="utf-8") as f:
+            json.dump(self.ground_truth, f, indent=2, ensure_ascii=False)
+
     
     def _load_ground_truth(self) -> Dict:
-        """
-        Завантажує ground truth анотації
-        
-        Формат JSON:
-        {
-            "accidents": [
-                {
-                    "frame": 150,
-                    "vehicles": [1, 2, 3],
-                    "bbox": [[x1, y1, x2, y2], ...],
-                    "type": "collision"
-                }
-            ],
-            "frame_annotations": {
-                "150": {
-                    "accident": true,
-                    "vehicles": [1, 2, 3]
-                }
-            }
-        }
-        """
         if not os.path.exists(self.ground_truth_path):
-            print(f"⚠️ Ground truth файл не знайдено: {self.ground_truth_path}")
-            return None
-        
+            print(f"⚠️ Ground truth файл не знайдено: {self.ground_truth_path}, створюю новий")
+            return {'frame_annotations': {}}
+
+        # Якщо файл існує, але пустий
+        if os.path.getsize(self.ground_truth_path) == 0:
+            return {'frame_annotations': {}}
+
         with open(self.ground_truth_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                print(f"⚠️ Ground truth файл некоректний, створюю новий")
+                return {'frame_annotations': {}}
+
     
     def reset(self):
         self.metrics = {
@@ -99,16 +94,6 @@ class MetricsTracker:
             },
             # ===== НОВІ МЕТРИКИ =====
             'evaluation': {
-                'confusion_matrix': {
-                    'true_positives': 0,
-                    'false_positives': 0,
-                    'true_negatives': 0,
-                    'false_negatives': 0
-                },
-                'precision': 0.0,
-                'recall': 0.0,
-                'f1_score': 0.0,
-                'accuracy': 0.0,
                 'mAP': 0.0,
                 'mAP_50': 0.0,
                 'mAP_75': 0.0
@@ -138,11 +123,6 @@ class MetricsTracker:
         
         self.start_time = None
         self.frame_times = deque(maxlen=100)
-        
-        # Для обчислення метрик
-        self.predictions_per_frame = {}  # {frame_num: [predictions]}
-        self.detection_scores = []  # Всі скори детекцій
-        self.detection_labels = []  # Ground truth labels (0/1)
         
         # Для MOTA/IDF1
         self.tracking_data = {
@@ -215,66 +195,6 @@ class MetricsTracker:
         self.metrics['accidents']['sudden_stops'] += sudden_stops
     
     # ========== НОВІ МЕТОДИ ДЛЯ РОЗШИРЕНИХ МЕТРИК ==========
-    
-    def update_detection_for_evaluation(self, frame_num: int, predicted_accident: bool, 
-                                       confidence: float):
-        """
-        Оновлює дані для обчислення Precision, Recall, F1, ROC
-        
-        Args:
-            frame_num: Номер кадру
-            predicted_accident: Чи була передбачена аварія
-            confidence: Впевненість передбачення (0-1)
-        """
-        if self.ground_truth is None:
-            return
-        
-        # Перевіряємо ground truth
-        gt_accident = self._is_accident_in_ground_truth(frame_num)
-        
-        # Зберігаємо для ROC
-        self.detection_scores.append(confidence)
-        self.detection_labels.append(1 if gt_accident else 0)
-        
-        # Оновлюємо confusion matrix
-        if predicted_accident and gt_accident:
-            self.metrics['evaluation']['confusion_matrix']['true_positives'] += 1
-        elif predicted_accident and not gt_accident:
-            self.metrics['evaluation']['confusion_matrix']['false_positives'] += 1
-        elif not predicted_accident and gt_accident:
-            self.metrics['evaluation']['confusion_matrix']['false_negatives'] += 1
-        else:
-            self.metrics['evaluation']['confusion_matrix']['true_negatives'] += 1
-    
-    def update_tracking_for_evaluation(self, frame_num: int, predicted_tracks: List[Tuple],
-                                      iou_threshold: float = 0.5):
-        """
-        Оновлює дані для обчислення MOTA, IDF1
-        
-        Args:
-            frame_num: Номер кадру
-            predicted_tracks: [(track_id, bbox, confidence), ...]
-            iou_threshold: Поріг IoU для matching
-        """
-        if self.ground_truth is None:
-            return
-        
-        # Зберігаємо предикції
-        self.tracking_data['predictions'][frame_num] = predicted_tracks
-        
-        # Отримуємо ground truth для цього кадру
-        gt_tracks = self._get_ground_truth_tracks(frame_num)
-        self.tracking_data['ground_truth'][frame_num] = gt_tracks
-        
-        # Matching predicted і ground truth треків
-        matches, fp, fn, id_switches = self._match_tracks(
-            predicted_tracks, gt_tracks, iou_threshold
-        )
-        
-        self.tracking_data['matches'] += matches
-        self.tracking_data['false_positives_tracking'] += fp
-        self.tracking_data['false_negatives_tracking'] += fn
-        self.tracking_data['id_switches'] += id_switches
     
     def _is_accident_in_ground_truth(self, frame_num: int) -> bool:
         """Перевіряє чи є аварія в ground truth для цього кадру"""
@@ -380,30 +300,6 @@ class MetricsTracker:
         
         return inter_area / union_area if union_area > 0 else 0
     
-    def compute_precision_recall_f1(self):
-        """Обчислює Precision, Recall, F1-score"""
-        cm = self.metrics['evaluation']['confusion_matrix']
-        tp = cm['true_positives']
-        fp = cm['false_positives']
-        fn = cm['false_negatives']
-        tn = cm['true_negatives']
-        
-        # Precision
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-        
-        # Recall
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-        
-        # F1-Score
-        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
-        
-        # Accuracy
-        accuracy = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0
-        
-        self.metrics['evaluation']['precision'] = round(precision, 4)
-        self.metrics['evaluation']['recall'] = round(recall, 4)
-        self.metrics['evaluation']['f1_score'] = round(f1, 4)
-        self.metrics['evaluation']['accuracy'] = round(accuracy, 4)
     
     def compute_map(self, iou_thresholds: List[float] = [0.5, 0.75]):
         """
@@ -491,158 +387,74 @@ class MetricsTracker:
         
         return ap
     
+    # def compute_mota_idf1(self):
+    #     """
+    #     Обчислює MOTA (Multiple Object Tracking Accuracy) та IDF1
+    #     """
+    #     if not self.ground_truth:
+    #         return
+        
+    #     # MOTA = 1 - (FN + FP + ID_switches) / GT
+    #     total_gt = sum(len(self.tracking_data['ground_truth'][f]) 
+    #                   for f in self.tracking_data['ground_truth'])
+        
+    #     if total_gt == 0:
+    #         return
+        
+    #     fn = self.tracking_data['false_negatives_tracking']
+    #     fp = self.tracking_data['false_positives_tracking']
+    #     id_sw = self.tracking_data['id_switches']
+        
+    #     mota = 1 - (fn + fp + id_sw) / total_gt
+    #     self.metrics['tracking_evaluation']['MOTA'] = round(mota, 4)
+        
+    #     # IDF1 = 2 * IDTP / (2 * IDTP + IDFP + IDFN)
+    #     matches = self.tracking_data['matches']
+        
+    #     idf1 = 2 * matches / (2 * matches + fp + fn) if (2 * matches + fp + fn) > 0 else 0
+    #     self.metrics['tracking_evaluation']['IDF1'] = round(idf1, 4)
+        
+    #     # Додаткові метрики
+    #     self.metrics['tracking_evaluation']['id_switches'] = id_sw
+    #     self.metrics['tracking_evaluation']['false_positives'] = fp
+    #     self.metrics['tracking_evaluation']['false_negatives'] = fn
+
     def compute_mota_idf1(self):
-        """
-        Обчислює MOTA (Multiple Object Tracking Accuracy) та IDF1
-        """
-        if not self.ground_truth:
-            return
-        
-        # MOTA = 1 - (FN + FP + ID_switches) / GT
-        total_gt = sum(len(self.tracking_data['ground_truth'][f]) 
-                      for f in self.tracking_data['ground_truth'])
-        
-        if total_gt == 0:
-            return
-        
-        fn = self.tracking_data['false_negatives_tracking']
-        fp = self.tracking_data['false_positives_tracking']
-        id_sw = self.tracking_data['id_switches']
-        
-        mota = 1 - (fn + fp + id_sw) / total_gt
+        total_gt = 0
+        total_matches = 0
+        total_fp = 0
+        total_fn = 0
+        total_id_switches = 0
+
+        # Перебираємо всі кадри з предикціями
+        for frame_num in self.tracking_data['predictions']:
+            predicted = self.tracking_data['predictions'][frame_num]
+            gt = self.tracking_data['ground_truth'].get(frame_num, [])
+
+            matches, fp, fn, id_sw = self._match_tracks(
+                predicted=predicted,
+                ground_truth=gt,
+                iou_threshold=0.3  # нижчий поріг для більш м’якого матчингу
+            )
+
+            total_matches += matches
+            total_fp += fp
+            total_fn += fn
+            total_id_switches += id_sw
+            total_gt += len(gt)
+
+        # MOTA
+        mota = 1 - (total_fn + total_fp + total_id_switches) / total_gt if total_gt > 0 else 0
         self.metrics['tracking_evaluation']['MOTA'] = round(mota, 4)
-        
-        # IDF1 = 2 * IDTP / (2 * IDTP + IDFP + IDFN)
-        matches = self.tracking_data['matches']
-        
-        idf1 = 2 * matches / (2 * matches + fp + fn) if (2 * matches + fp + fn) > 0 else 0
+
+        # IDF1
+        idf1 = 2 * total_matches / (2 * total_matches + total_fp + total_fn) if (2 * total_matches + total_fp + total_fn) > 0 else 0
         self.metrics['tracking_evaluation']['IDF1'] = round(idf1, 4)
-        
+
         # Додаткові метрики
-        self.metrics['tracking_evaluation']['id_switches'] = id_sw
-        self.metrics['tracking_evaluation']['false_positives'] = fp
-        self.metrics['tracking_evaluation']['false_negatives'] = fn
-    
-    def compute_roc_auc(self):
-        """Обчислює ROC криву та AUC"""
-        if len(self.detection_scores) == 0 or len(self.detection_labels) == 0:
-            return
-        
-        # Обчислюємо ROC
-        fpr, tpr, thresholds = roc_curve(self.detection_labels, self.detection_scores)
-        roc_auc = auc(fpr, tpr)
-        
-        self.metrics['roc_data']['fpr'] = fpr.tolist()
-        self.metrics['roc_data']['tpr'] = tpr.tolist()
-        self.metrics['roc_data']['thresholds'] = thresholds.tolist()
-        self.metrics['roc_data']['auc'] = round(roc_auc, 4)
-    
-    def compute_precision_recall_curve(self):
-        """Обчислює Precision-Recall криву"""
-        if len(self.detection_scores) == 0 or len(self.detection_labels) == 0:
-            return
-        
-        precision, recall, thresholds = precision_recall_curve(
-            self.detection_labels, self.detection_scores
-        )
-        
-        # Average Precision
-        from sklearn.metrics import average_precision_score
-        avg_precision = average_precision_score(self.detection_labels, self.detection_scores)
-        
-        self.metrics['precision_recall_data']['precision'] = precision.tolist()
-        self.metrics['precision_recall_data']['recall'] = recall.tolist()
-        self.metrics['precision_recall_data']['thresholds'] = thresholds.tolist()
-        self.metrics['precision_recall_data']['average_precision'] = round(avg_precision, 4)
-    
-    def plot_roc_curve(self, save_path: str):
-        """Малює та зберігає ROC криву"""
-        if not self.metrics['roc_data']['fpr']:
-            print("⚠️ Немає даних для ROC кривої")
-            return
-        
-        plt.figure(figsize=(10, 8))
-        plt.plot(
-            self.metrics['roc_data']['fpr'], 
-            self.metrics['roc_data']['tpr'],
-            color='darkorange',
-            lw=2,
-            label=f'ROC curve (AUC = {self.metrics["roc_data"]["auc"]:.4f})'
-        )
-        plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', label='Random')
-        plt.xlim([0.0, 1.0])
-        plt.ylim([0.0, 1.05])
-        plt.xlabel('False Positive Rate', fontsize=12)
-        plt.ylabel('True Positive Rate', fontsize=12)
-        plt.title('Receiver Operating Characteristic (ROC) Curve', fontsize=14)
-        plt.legend(loc="lower right")
-        plt.grid(alpha=0.3)
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        print(f"✅ ROC крива збережена: {save_path}")
-    
-    def plot_precision_recall_curve(self, save_path: str):
-        """Малює та зберігає Precision-Recall криву"""
-        if not self.metrics['precision_recall_data']['precision']:
-            print("⚠️ Немає даних для PR кривої")
-            return
-        
-        plt.figure(figsize=(10, 8))
-        plt.plot(
-            self.metrics['precision_recall_data']['recall'],
-            self.metrics['precision_recall_data']['precision'],
-            color='blue',
-            lw=2,
-            label=f'PR curve (AP = {self.metrics["precision_recall_data"]["average_precision"]:.4f})'
-        )
-        plt.xlim([0.0, 1.0])
-        plt.ylim([0.0, 1.05])
-        plt.xlabel('Recall', fontsize=12)
-        plt.ylabel('Precision', fontsize=12)
-        plt.title('Precision-Recall Curve', fontsize=14)
-        plt.legend(loc="lower left")
-        plt.grid(alpha=0.3)
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        print(f"✅ PR крива збережена: {save_path}")
-    
-    def plot_confusion_matrix(self, save_path: str):
-        """Малює та зберігає confusion matrix"""
-        cm = self.metrics['evaluation']['confusion_matrix']
-        
-        matrix = np.array([
-            [cm['true_negatives'], cm['false_positives']],
-            [cm['false_negatives'], cm['true_positives']]
-        ])
-        
-        plt.figure(figsize=(8, 6))
-        plt.imshow(matrix, interpolation='nearest', cmap=plt.cm.Blues)
-        plt.title('Confusion Matrix', fontsize=14)
-        plt.colorbar()
-        
-        classes = ['No Accident', 'Accident']
-        tick_marks = np.arange(len(classes))
-        plt.xticks(tick_marks, classes, fontsize=12)
-        plt.yticks(tick_marks, classes, fontsize=12)
-        
-        # Додаємо текст
-        thresh = matrix.max() / 2.
-        for i in range(2):
-            for j in range(2):
-                plt.text(j, i, format(matrix[i, j], 'd'),
-                        ha="center", va="center",
-                        color="white" if matrix[i, j] > thresh else "black",
-                        fontsize=16)
-        
-        plt.ylabel('True label', fontsize=12)
-        plt.xlabel('Predicted label', fontsize=12)
-        plt.tight_layout()
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        print(f"✅ Confusion matrix збережена: {save_path}")
+        self.metrics['tracking_evaluation']['id_switches'] = total_id_switches
+        self.metrics['tracking_evaluation']['false_positives'] = total_fp
+        self.metrics['tracking_evaluation']['false_negatives'] = total_fn
     
     def finalize(self):
         """Фінальні обчислення після обробки всього відео"""
@@ -691,12 +503,8 @@ class MetricsTracker:
 
         # ===== РОЗШИРЕНІ МЕТРИКИ =====
         if self.ground_truth:
-            self.compute_precision_recall_f1()
             self.compute_map()
             self.compute_mota_idf1()
-            self.compute_roc_auc()
-            self.compute_precision_recall_curve()
-
         return self.metrics
 
 
@@ -705,25 +513,9 @@ class MetricsTracker:
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(self.metrics, f, indent=2, ensure_ascii=False)
 
-    def save_all_plots(self, output_dir: str):
-        """Зберігає всі графіки"""
-        os.makedirs(output_dir, exist_ok=True)
-        
-        roc_path = os.path.join(output_dir, 'roc_curve.png')
-        pr_path = os.path.join(output_dir, 'precision_recall_curve.png')
-        cm_path = os.path.join(output_dir, 'confusion_matrix.png')
-        
-        self.plot_roc_curve(roc_path)
-        self.plot_precision_recall_curve(pr_path)
-        self.plot_confusion_matrix(cm_path)
-
     def print_summary(self):
         """Виводить зведення метрик у консоль"""
         m = self.metrics
-        
-        print("\n" + "="*70)
-        print(" "*20 + "МЕТРИКИ СИСТЕМИ")
-        print("="*70)
         
         print("\n📹 ВІДЕО:")
         print(f"  Шлях: {m['video_info'].get('path', 'N/A')}")
@@ -740,9 +532,8 @@ class MetricsTracker:
         print("\n🎯 YOLO ДЕТЕКЦІЯ:")
         print(f"  Всього детекцій: {m['detection']['yolo']['total_detections']}")
         print(f"  Середня впевненість: {m['detection']['yolo']['avg_confidence']}")
-        if m['detection']['yolo']['detections_per_frame']:
-            avg_det = np.mean(m['detection']['yolo']['detections_per_frame'])
-            print(f"  Середньо на кадр: {avg_det:.1f}")
+        avg_det = np.mean(m['detection']['yolo']['detections_per_frame'])
+        print(f"  Середньо на кадр: {avg_det:.1f}")
         
         print("\n🧠 CNN КЛАСИФІКАЦІЯ:")
         print(f"  Всього інференсів: {m['detection']['cnn']['total_inferences']}")
@@ -761,39 +552,20 @@ class MetricsTracker:
         print(f"  Попереджень про зіткнення: {m['accidents']['collision_warnings']}")
         print(f"  Раптових зупинок: {m['accidents']['sudden_stops']}")
         print(f"  Відфільтровано хибних: {m['accidents']['false_positives_filtered']}")
-        if m['accidents']['average_vehicles_per_accident']:
-            print(f"  Середньо авто в аварії: {m['accidents']['average_vehicles_per_accident']}")
+        print(f"  Середньо авто в аварії: {m['accidents']['average_vehicles_per_accident']}")
         
         # ===== РОЗШИРЕНІ МЕТРИКИ =====
-        if m['evaluation']['precision'] > 0 or m['evaluation']['recall'] > 0:
-            print("\n📊 ЯКІСТЬ ДЕТЕКЦІЇ:")
-            print(f"  Precision: {m['evaluation']['precision']:.4f}")
-            print(f"  Recall: {m['evaluation']['recall']:.4f}")
-            print(f"  F1-Score: {m['evaluation']['f1_score']:.4f}")
-            print(f"  Accuracy: {m['evaluation']['accuracy']:.4f}")
-            print(f"  mAP: {m['evaluation']['mAP']:.4f}")
-            print(f"  mAP@0.5: {m['evaluation']['mAP_50']:.4f}")
-            print(f"  mAP@0.75: {m['evaluation']['mAP_75']:.4f}")
-            
-            print("\n  Confusion Matrix:")
-            cm = m['evaluation']['confusion_matrix']
-            print(f"    True Positives:  {cm['true_positives']}")
-            print(f"    False Positives: {cm['false_positives']}")
-            print(f"    True Negatives:  {cm['true_negatives']}")
-            print(f"    False Negatives: {cm['false_negatives']}")
+        print("\n📊 ЯКІСТЬ ДЕТЕКЦІЇ:")
+        print(f"  mAP: {m['evaluation']['mAP']:.4f}")
+        print(f"  mAP@0.5: {m['evaluation']['mAP_50']:.4f}")
+        print(f"  mAP@0.75: {m['evaluation']['mAP_75']:.4f}")
         
-        if m['tracking_evaluation']['MOTA'] != 0:
-            print("\n🎯 ЯКІСТЬ ТРЕКІНГУ:")
-            print(f"  MOTA: {m['tracking_evaluation']['MOTA']:.4f}")
-            print(f"  IDF1: {m['tracking_evaluation']['IDF1']:.4f}")
-            print(f"  ID Switches: {m['tracking_evaluation']['id_switches']}")
-            print(f"  False Positives: {m['tracking_evaluation'].get('false_positives', 0)}")
-            print(f"  False Negatives: {m['tracking_evaluation'].get('false_negatives', 0)}")
-        
-        if m['roc_data']['auc'] > 0:
-            print("\n📈 ROC-AUC:")
-            print(f"  AUC Score: {m['roc_data']['auc']:.4f}")
-            print(f"  Average Precision: {m['precision_recall_data']['average_precision']:.4f}")
-        
+        print("\n🎯 ЯКІСТЬ ТРЕКІНГУ:")
+        print(f"  MOTA: {m['tracking_evaluation']['MOTA']:.4f}")
+        print(f"  IDF1: {m['tracking_evaluation']['IDF1']:.4f}")
+        print(f"  ID Switches: {m['tracking_evaluation']['id_switches']}")
+        print(f"  False Positives: {m['tracking_evaluation'].get('false_positives', 0)}")
+        print(f"  False Negatives: {m['tracking_evaluation'].get('false_negatives', 0)}")
+    
         print("\n" + "="*70 + "\n")
               

@@ -3,6 +3,7 @@ import json
 import os
 from datetime import datetime
 from typing import List, Tuple, Dict
+import shutil
 
 
 class AccidentFrameCapture:
@@ -19,7 +20,9 @@ class AccidentFrameCapture:
         self.accidents_dir = os.path.join(output_dir, "accidents")
         self.metadata_file = os.path.join(self.accidents_dir, "accidents_log.json")
         
-        os.makedirs(self.accidents_dir, exist_ok=True)
+        if os.path.exists(self.accidents_dir):
+            shutil.rmtree(self.accidents_dir)
+        os.makedirs(self.accidents_dir,exist_ok=True)
         
         # Історія аварій (щоб не дублювати одну й ту саму аварію)
         self.accident_history = {}  # {track_id: last_accident_frame}
@@ -45,24 +48,7 @@ class AccidentFrameCapture:
         accident_objects: List[Dict],
         video_path: str = None
     ) -> str:
-        """
-        Зберігає кадр з аварією з виділенням об'єктів
         
-        Args:
-            frame: Оригінальний кадр (numpy array)
-            frame_number: Номер кадру у відео
-            accident_objects: Список об'єктів що беруть участь в аварії
-                [{
-                    'track_id': int,
-                    'bbox': (x1, y1, x2, y2),
-                    'confidence': float,
-                    'type': str  # 'primary' or 'secondary'
-                }]
-            video_path: Шлях до вихідного відео (опціонально)
-        
-        Returns:
-            Шлях до збереженого файлу
-        """
         # Створюємо копію кадру для малювання
         annotated_frame = frame.copy()
         

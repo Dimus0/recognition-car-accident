@@ -178,3 +178,27 @@ def calculate_ttc(pos_a, vel_a, pos_b, vel_b):
     distance = np.linalg.norm(rel_pos)
     ttc = distance / speed_rel_towards
     return ttc
+
+
+def vizualuzate_tracks(ids, boxes, frame, analyzer, cnn_results_cache):
+    for i, tid in enumerate(ids):
+            x1, y1, x2, y2 = boxes[i]
+            
+            points = analyzer.track_history.get(tid, [])
+            if len(points) > 1:
+                pts = np.array(points, dtype=np.int32).reshape((-1, 1, 2))
+                cv2.polylines(frame, 
+                              [pts], 
+                              isClosed=False, 
+                              color=(255, 0, 0), 
+                              thickness=2)
+
+            # Беремо дані з кешу (або дефолтні, якщо CNN ще не запускалась для цього ID)
+            if tid in cnn_results_cache:
+                color, label, score = cnn_results_cache[tid]
+            else:
+                color, label = (255, 255, 255), f"ID {tid}" # White defaults
+
+            # Малюємо бокс і текст
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+            cv2.putText(frame, label, (x1, y1-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
