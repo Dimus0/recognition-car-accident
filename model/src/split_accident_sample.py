@@ -49,7 +49,6 @@ def split_dataset(base_path,output_path,test_ration=0.2):
 
 
 split_dataset(
-    base_path="D:\project\Accident Images Analysis Dataset\Accident Images Analysis Dataset\Accident -Detection",
+    base_path=r"D:\project\Accident Images Analysis Dataset\Accident Images Analysis Dataset\Accident-Detection",
     output_path="dataset",
 )
-

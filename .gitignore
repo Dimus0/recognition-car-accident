@@ -12,5 +12,7 @@ data/
 *.pt
 *.pdf
 *.mp4
-*.jpg
-*.png
+*.pt
+model/weights/
+*__pycache__/
+*.pth

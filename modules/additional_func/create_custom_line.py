@@ -3,7 +3,7 @@ import cv2
 def show_frame(frame):
     def mouse(event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
-            print(f"Clicked: ({x}, {y})")
+            print(f"({x}, {y}),")
 
     cv2.namedWindow("test",cv2.WINDOW_NORMAL)
     cv2.setMouseCallback("test", mouse)
@@ -18,7 +18,7 @@ def show_frame(frame):
 
 
 # --- Load image correctly ---
-image_path = r"D:\project\bachelor\modules\trach\frame1.png"
+image_path = r"D:\project\bachelor\model\src\image_of_frame\frame3.png"
 frame = cv2.imread(image_path)
 
 if frame is None:

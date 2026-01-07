@@ -1,0 +1,150 @@
+[
+  {
+    "timestamp": "20251223_114439_662618",
+    "frame_number": 120,
+    "annotated_image": "accident_20251223_114439_662618_frame120.jpg",
+    "original_image": "accident_20251223_114439_662618_frame120_original.jpg",
+    "video_source": "D:\\project\\videoplayback.mp4",
+    "total_vehicles": 2,
+    "primary_vehicles": [
+      "3",
+      "3"
+    ],
+    "secondary_vehicles": [],
+    "objects": [
+      {
+        "track_id": "3",
+        "bbox": [
+          603,
+          466,
+          775,
+          606
+        ],
+        "confidence": 0.9806062579154968,
+        "type": "primary"
+      },
+      {
+        "track_id": "3",
+        "bbox": [
+          603,
+          466,
+          775,
+          606
+        ],
+        "confidence": 0.9806062579154968,
+        "type": "primary"
+      }
+    ]
+  },
+  {
+    "timestamp": "20251223_114449_165754",
+    "frame_number": 300,
+    "annotated_image": "accident_20251223_114449_165754_frame300.jpg",
+    "original_image": "accident_20251223_114449_165754_frame300_original.jpg",
+    "video_source": "D:\\project\\videoplayback.mp4",
+    "total_vehicles": 2,
+    "primary_vehicles": [
+      "13",
+      "13"
+    ],
+    "secondary_vehicles": [],
+    "objects": [
+      {
+        "track_id": "13",
+        "bbox": [
+          97,
+          245,
+          299,
+          559
+        ],
+        "confidence": 0.974871814250946,
+        "type": "primary"
+      },
+      {
+        "track_id": "13",
+        "bbox": [
+          97,
+          245,
+          299,
+          559
+        ],
+        "confidence": 0.974871814250946,
+        "type": "primary"
+      }
+    ]
+  },
+  {
+    "timestamp": "20251223_114451_110220",
+    "frame_number": 331,
+    "annotated_image": "accident_20251223_114451_110220_frame331.jpg",
+    "original_image": "accident_20251223_114451_110220_frame331_original.jpg",
+    "video_source": "D:\\project\\videoplayback.mp4",
+    "total_vehicles": 2,
+    "primary_vehicles": [
+      "13",
+      "13"
+    ],
+    "secondary_vehicles": [],
+    "objects": [
+      {
+        "track_id": "13",
+        "bbox": [
+          108,
+          261,
+          353,
+          672
+        ],
+        "confidence": 0.9484925866127014,
+        "type": "primary"
+      },
+      {
+        "track_id": "13",
+        "bbox": [
+          108,
+          261,
+          353,
+          672
+        ],
+        "confidence": 0.9484925866127014,
+        "type": "primary"
+      }
+    ]
+  },
+  {
+    "timestamp": "20251223_114453_080177",
+    "frame_number": 362,
+    "annotated_image": "accident_20251223_114453_080177_frame362.jpg",
+    "original_image": "accident_20251223_114453_080177_frame362_original.jpg",
+    "video_source": "D:\\project\\videoplayback.mp4",
+    "total_vehicles": 2,
+    "primary_vehicles": [
+      "13",
+      "13"
+    ],
+    "secondary_vehicles": [],
+    "objects": [
+      {
+        "track_id": "13",
+        "bbox": [
+          155,
+          481,
+          350,
+          762
+        ],
+        "confidence": 0.995854914188385,
+        "type": "primary"
+      },
+      {
+        "track_id": "13",
+        "bbox": [
+          155,
+          481,
+          350,
+          762
+        ],
+        "confidence": 0.995854914188385,
+        "type": "primary"
+      }
+    ]
+  }
+]
