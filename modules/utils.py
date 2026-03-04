@@ -1,10 +1,7 @@
 import cv2
 import numpy as np
 import torch
-from torchvision import transforms
-from collections import defaultdict, deque
 from model.src.cnn import ImproveAccidentCNN
-from modules.analyzer import TrafficAnalyzer
 from ultralytics import YOLO
 from deep_sort_realtime.deepsort_tracker import DeepSort
 
@@ -36,11 +33,10 @@ def load_models(DEVICE,CNN_WEIGHTS_PATH,YOLO_MODEL_PATH):
         max_age=15, # скількитрек живе без детекції
         n_init=2,
         max_iou_distance=0.4,
-        max_cosine_distance=0.2,
+        max_cosine_distance=0.3,
         nn_budget=20,
     )
 
-    # logger.info("Models loaded successfully.")
     return cnn, yolo,deepsort
 
 

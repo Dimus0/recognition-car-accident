@@ -17,6 +17,10 @@ class AccidentFrameCapture:
         """
         self.output_dir = output_dir
         self.accidents_dir = os.path.join(output_dir, "accidents")
+        if os.path.exists(self.accidents_dir):
+            # Очищаємо старі дані
+            for f in os.listdir(self.accidents_dir):
+                os.remove(os.path.join(self.accidents_dir, f))
         self.metadata_file = os.path.join(self.accidents_dir, "accidents_log.json")
         
         os.makedirs(self.accidents_dir, exist_ok=True)

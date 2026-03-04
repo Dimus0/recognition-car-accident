@@ -4,32 +4,33 @@ import torch
 from torchvision import transforms
 import logging
 import os
-from ultralytics import YOLO
-from collections import defaultdict, deque
 from modules.utils import *
 from modules.analyzer import TrafficAnalyzer
 from modules.accidenttracker import AccidentStateTracker
 from modules.accidentcapture import AccidentFrameCapture
 from modules.metrics import MetricsTracker
+import glob
 
 
 # ---------------------- CONFIG ----------------------
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-LOG_DIR = r'D:\project\bachelor\logs'
-OUTPUT_DIR = os.path.join(LOG_DIR, "output_result")
-YOLO_MODEL_PATH = r"D:\project\bachelor\model\weights\yolov8-fine-tuning-15.pt"
-CNN_WEIGHTS_PATH = r"D:\project\bachelor\model\weights\accident_cnn_model.pth"
+LOG_DIR = r'E:\personalproject\bachelor\logs'
+OUTPUT_DIR = os.path.join(LOG_DIR, "fragments")
+YOLO_MODEL_PATH = r"E:\personalproject\bachelor\model\weights\yolov8-fine-tuning-15.pt"
+CNN_WEIGHTS_PATH = r"E:\personalproject\bachelor\model\weights\accident_cnn_model.pth"
 METRICS_FILE = os.path.join(LOG_DIR, "metrics_summary.json")
 DETAILED_METRICS_FILE = os.path.join(LOG_DIR, "detailed_metrics.json")
 
+# Вкажіть шлях до JSON з розміткою (якщо є), інакше None
+GROUND_TRUTH_PATH = r"E:\personalproject\bachelor\logs\ground_truth.json" 
+
 # VIDEO_PATH = r"D:\project\highway.mp4"
-VIDEO_PATH = r"D:\project\videoplayback.mp4"
-# VIDEO_PATH = r"D:\project\dtp_2.mp4"
+VIDEO_PATH = r"E:\personalproject\bachelor\data\video\videoplayback.mp4"
 
 CONF_YOLO = 0.6
 CONF_ACCIDENT_HIGH = 0.9632  # Поріг точного ДТП
-CONF_ACCIDENT_LOW = 0.843   # Поріг попередження
+CONF_ACCIDENT_LOW = 0.899   # Поріг попередження
 HEARTBEAT_RATE = 30        # Як часто перевіряти авто без підозр
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -47,10 +48,9 @@ logging.basicConfig(
 logger = logging.getLogger("accident_detector")
 
 
-
 # ---------------------- INIT ----------------------
 
-cnn_model, yolo_model,deepsort = load_models(DEVICE,CNN_WEIGHTS_PATH,YOLO_MODEL_PATH)
+cnn_model, yolo_model, deepsort = load_models(DEVICE, CNN_WEIGHTS_PATH, YOLO_MODEL_PATH)
 logger.info("Models loaded successfully.")
 
 cnn_transforms = transforms.Compose([
@@ -63,7 +63,10 @@ cnn_transforms = transforms.Compose([
 
 # ---------------------- MAIN PIPELINE ----------------------
 def accident_detection(input_video):
-    metrics_tracker = MetricsTracker()
+
+    metrics_tracker = MetricsTracker(
+        ground_truth_path=GROUND_TRUTH_PATH,
+        auto_generate_gt=True)
 
     cap = cv2.VideoCapture(input_video)
     width, height = int(cap.get(3)), int(cap.get(4))
@@ -76,8 +79,9 @@ def accident_detection(input_video):
     output_path = os.path.join(OUTPUT_DIR, "result.mp4")
     out = cv2.VideoWriter(output_path, 
                           cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height))
+    
 
-    # -------- Лінії після яких відбувається трекінг --------)
+    # -------- Лінії після яких відбувається трекінг --------
 
     '''
         Область для відео із шосе
@@ -103,7 +107,7 @@ def accident_detection(input_video):
 
     analyzer = TrafficAnalyzer(
         collision_ttc_threshold=1.5,
-        sudden_stop_threshold=0.3,
+        sudden_stop_threshold=0.19,
         min_speed_for_stop=5.0
     )
     accident_capture = AccidentFrameCapture(OUTPUT_DIR)
@@ -130,6 +134,9 @@ def accident_detection(input_video):
 
         cv2.polylines(frame, [ROI_POLYGON], isClosed=True, color=(255, 0, 0), thickness=2)
 
+        '''
+            YOLO Inference
+        '''
         results = yolo_model(frame, conf=CONF_YOLO, verbose=False)
 
         detections =  []
@@ -137,7 +144,7 @@ def accident_detection(input_video):
 
         if results and results[0].boxes is not None:
             for box in results[0].boxes:
-                x1,y1,x2,y2 = box.xyxy[0].cpu().numpy()
+                x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
                 conf = float(box.conf[0])
                 cls = int(box.cls[0])
 
@@ -147,30 +154,17 @@ def accident_detection(input_video):
                 center_x = int((x1 + x2) / 2)
                 bottom_y = int(y2)
 
-
                 if is_point_in_polygon((center_x, bottom_y), ROI_POLYGON):
                     detections.append((
                         [x1, y1, x2 - x1, y2 - y1], # XYWH format for DeepSort
                         conf,
                         cls
                     ))
+                    yolo_confidences.append(conf)
 
-        metrics_tracker.update_yolo_metrics(detections,yolo_confidences)
+        metrics_tracker.update_yolo_metrics(detections, yolo_confidences)
         
         tracks = deepsort.update_tracks(detections, frame=frame)
-
-
-        if metrics_tracker.ground_truth is not None:
-            predicted_tracks = [
-                (tid, box, 1.0)
-                for tid, box in zip(ids, boxes)
-            ]
-
-            metrics_tracker.update_tracking_for_evaluation(
-                frame_num=frame_count,
-                predicted_tracks=predicted_tracks,
-                iou_threshold=0.5
-            )
 
         boxes = []
         ids = []
@@ -189,16 +183,24 @@ def accident_detection(input_video):
             ids.append(tid)
             active_tracks_objects.append(track)
         
+        # --- Оцінка трекінгу (MOTA/IDF1) має бути ТУТ, коли boxes/ids вже заповнені ---
+        if metrics_tracker.ground_truth is not None:
+            predicted_tracks = [
+                (tid, box, 1.0)
+                for tid, box in zip(ids, boxes)
+            ]
+            metrics_tracker.update_tracking_for_evaluation(
+                frame_num=frame_count,
+                predicted_tracks=predicted_tracks,
+                iou_threshold=0.5
+            )
+
         analyzer.update_tracks(boxes, ids)
         analyzer.clean_old_tracks(ids)
 
-        metrics_tracker.update_tracking_metrics(ids,analyzer.track_history)
+        metrics_tracker.update_tracking_metrics(ids, analyzer.track_history)
 
-        crops_to_process = []
-        ids_to_process = []
-        box_map_for_cnn = []
-
-        collision_risky_ids = analyzer.predict_collision(boxes=boxes,ids=ids)
+        metrics_tracker.record_tracks(frame_count,boxes,ids)
 
         collision_risky_ids = analyzer.predict_collision(boxes=boxes, ids=ids)
 
@@ -231,18 +233,10 @@ def accident_detection(input_video):
                     ids_to_process.append(tid)
                     box_map_for_cnn.append((x1, y1, x2, y2))
 
-            # Якщо треба запускати CNN
-            if should_run_cnn:
-                crop = frame[y1:y2, x1:x2]
-                if crop.size > 0:
-                    crops_to_process.append(crop)
-                    ids_to_process.append(tid)
-                    box_map_for_cnn.append((x1, y1, x2, y2))
-
         accident_detected_this_frame = False
         accident_objects = []
 
-        # 6. CNN Inference (тільки якщо є "підозрілі" кандидати)
+        # 6. CNN Inference
         cnn_start = cv2.getTickCount()
         if crops_to_process:
             scores = process_cnn_batch(crops_to_process, cnn_transforms, cnn_model)
@@ -266,6 +260,14 @@ def accident_detection(input_video):
                         'confidence': score,
                         'type': 'primary'
                     })
+
+                    metrics_tracker.record_accident(
+                        frame_num=frame_count,
+                        accident_type='confirmed',
+                        confidence=score,
+                        involved_tracks=[tid],
+                        severity='high'
+                    )
                     
                     logger.info(f"[FRAME {frame_count}] CONFIRMED ACCIDENT | ID={tid} | SCORE={score:.2f}")
                 
@@ -282,6 +284,14 @@ def accident_detection(input_video):
                         'confidence': score,
                         'type': 'primary'
                     })
+
+                    metrics_tracker.record_accident(
+                        frame_num=frame_count,
+                        accident_type='collision',
+                        confidence=score,
+                        involved_tracks=[tid],
+                        severity='high'
+                    )
                     
                     logger.warning(f"[FRAME {frame_count}] NEW ACCIDENT | ID={tid} | SCORE={score:.2f}")
                 
@@ -296,6 +306,14 @@ def accident_detection(input_video):
                             'confidence': score,
                             'type': 'secondary'
                         })
+
+                        metrics_tracker.record_accident(
+                            frame_num=frame_count,
+                            accident_type='warning',
+                            confidence=score,
+                            involved_tracks=[tid],
+                            severity='medium'
+                        )
                     
                     logger.info(f"[FRAME {frame_count}] WARNING | ID={tid} | SCORE={score:.2f}")
                 
@@ -307,34 +325,35 @@ def accident_detection(input_video):
 
 
         if accident_detected_this_frame and accident_objects:
+            # Виправлено 'primaty' на 'primary'
             primary_positions = [obj['bbox'] for obj in accident_objects 
-                                 if obj['type'] == 'primaty']
+                                 if obj['type'] == 'primary']
 
             for i, tid in enumerate(ids):
                 if tid not in [obj['track_id'] for obj in accident_objects]:
-                    x1,y1,x2,y2 = boxes[i]
+                    x1, y1, x2, y2 = boxes[i]
 
-                    for px1,py1,px2,py2 in primary_positions:
+                    for px1, py1, px2, py2 in primary_positions:
                         distance = calculate_box_distance(
-                            (x1,y1,x2,y2),
-                            (px1,py1,px2,py2)
+                            (x1, y1, x2, y2),
+                            (px1, py1, px2, py2)
                         )
 
                         if distance < 250:
                             accident_objects.append({
                                 'track_id': tid,
-                                'bbox': (x1,x2,y1,y2),
-                                'confidence': cnn_results_cache.get(tid, (None,None,0.0))[2],
+                                'bbox': (x1, y1, x2, y2),
+                                'confidence': cnn_results_cache.get(tid, (None, None, 0.0))[2],
                                 'type': 'secondary'
                             })
                             break
+            
             should_save = any(
-                accident_capture.should_save_accident(obj['track_id'],frame_count)
+                accident_capture.should_save_accident(obj['track_id'], frame_count)
                 for obj in accident_objects if obj['type'] == 'primary'
             )
 
             if should_save:
-
                 saved_path = accident_capture.save_accident_frame(
                     frame=frame,
                     frame_number=frame_count,
@@ -343,8 +362,8 @@ def accident_detection(input_video):
                 )
 
                 logger.critical(
-                    f"[ACCIDENT SAVED] Frame {frame_count} |"
-                    f"Vehicles: {len(accident_objects)} |"
+                    f"[ACCIDENT SAVED] Frame {frame_count} | "
+                    f"Vehicles: {len(accident_objects)} | "
                     f"Saved to: {saved_path}"
                 )
 
@@ -357,18 +376,6 @@ def accident_detection(input_video):
             collision_warnings,
             sudden_stops
         )
-        if metrics_tracker.ground_truth is not None:
-            frame_cofidence = max(
-                [obj['confidence'] for obj in accident_objects],
-                default=0.0
-            )
-
-            metrics_tracker.update_detection_for_evaluation(
-                frame_num=frame_count,
-                predicted_accident=accident_detected_this_frame,
-                confidence=frame_cofidence
-            )
-
 
         # 7. Візуалізація (Draw Loop)
         for i, tid in enumerate(ids):
@@ -381,7 +388,7 @@ def accident_detection(input_video):
                 cv2.polylines(frame, [pts], isClosed=False, 
                               color=(255, 0, 0), thickness=2)
 
-            # Беремо дані з кешу (або дефолтні, якщо CNN ще не запускалась для цього ID)
+            # Беремо дані з кешу
             if tid in cnn_results_cache:
                 color, label, score = cnn_results_cache[tid]
             else:
