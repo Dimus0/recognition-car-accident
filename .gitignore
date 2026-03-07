@@ -1,4 +1,5 @@
 env/
+.env
 article/
 dataset/
 text.txt
@@ -21,6 +22,5 @@ model/weights/
 *.png
 *.jpg
 *.jpeg
-.env
 *.json
 *.csv

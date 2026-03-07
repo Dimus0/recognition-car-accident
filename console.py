@@ -334,6 +334,8 @@ def accident_detection(input_video):
                         )
                     
                     logger.info(f"[FRAME {frame_count}] WARNING | ID={tid} | SCORE={eff_score:.2f}")
+
+                    if tid not in noti
                 
                 else:
                     if tid in lstm_risk_ids:
