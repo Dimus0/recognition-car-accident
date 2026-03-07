@@ -21,3 +21,6 @@ model/weights/
 *.png
 *.jpg
 *.jpeg
+.env
+*.json
+*.csv

@@ -4,7 +4,7 @@ import sys
 
 # ---------------------- ПАРАМЕТРИ ----------------------
 
-video_path = r"E:\personalproject\bachelor\data\video\Highway_traffic.mp4"
+video_path = r"E:\personalproject\bachelor\data\video\traffic.mp4"
 output_folder = r"E:\personalproject\bachelor\data\video\fragments"
 
 os.makedirs(output_folder, exist_ok=True)

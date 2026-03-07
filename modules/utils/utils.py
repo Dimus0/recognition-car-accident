@@ -7,22 +7,14 @@ from deep_sort_realtime.deepsort_tracker import DeepSort
 from collections import deque, defaultdict
 from sklearn.preprocessing import StandardScaler
 from model.src.lstm import MotionLSTM
+from modules.config.config import Config
 import pickle
 import logging
 import os
+from typing import Tuple, Optional
 
 logger = logging.getLogger("accident_detector")
 
-LSTM_OBS_LEN         = 20      # кадрів спостереження
-LSTM_PRED_LEN        = 30      # кадрів прогнозу
-LSTM_HIDDEN          = 128
-LSTM_LAYERS          = 2
-LSTM_DROPOUT         = 0.3
-LSTM_COORD_SCALE     = 10.0     # ділення координат при тренуванні
-LSTM_COLLISION_PX    = 80       # Поріг зближення траєкторій (в пікселях після зворотного масштабування)
-LSTM_COLLISION_FRAMES= 10       # Скільки майбутніх кроків прогнозу перевіряти на зближення
-
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def compute_iou(boxA, boxB):
     xA = max(boxA[0], boxB[0])
@@ -45,11 +37,13 @@ def load_models(DEVICE,CNN_WEIGHTS_PATH,YOLO_MODEL_PATH):
     yolo.to(DEVICE)
 
     deepsort = DeepSort(
-        max_age=15, # скількитрек живе без детекції
-        n_init=2,
-        max_iou_distance=0.4,
-        max_cosine_distance=0.3,
-        nn_budget=20,
+        max_age=45,              # ЗБІЛЬШЕНО: Чекаємо 45 кадрів (1.5 сек), якщо YOLO загубив авто, перш ніж вбити трек
+        n_init=4,                # ЗБІЛЬШЕНО: Об'єкт має бути впевнено знайдений 4 кадри поспіль, щоб відсіяти "фантоми"
+        max_iou_distance=0.7,    # Залишаємо стандарт
+        max_cosine_distance=0.3, # Залишаємо (відповідає за порівняння візуальної схожості)
+        nn_budget=20,            # Залишаємо (скільки попередніх кадрів авто пам'ятає мережа)
+        embedder="mobilenet",    # ДОДАНО (Опціонально): Вказує DeepSort використовувати легку нейромережу для розрізнення машин за виглядом
+        half=True                # ДОДАНО: Прискорює роботу на GPU
     )
 
     return cnn, yolo,deepsort
@@ -65,7 +59,7 @@ def process_cnn_batch(crops,cnn_transforms,cnn_model):
             tensors.append(t)
         except:
             tensors.append(torch.zeros(3, 224, 224))
-    batch = torch.stack(tensors).to(DEVICE)
+    batch = torch.stack(tensors).to(Config.DEVICE)
     with torch.no_grad():
         out = cnn_model(batch)
         if out.shape[1] == 1:
@@ -205,9 +199,9 @@ class TrajectoryPredictor:
 
     def __init__(self, model: MotionLSTM, scaler: StandardScaler,
                  device: torch.device,
-                 obs_len:     int   = LSTM_OBS_LEN,
-                 pred_len:    int   = LSTM_PRED_LEN,
-                 coord_scale: float = LSTM_COORD_SCALE):
+                 obs_len:     int   = Config.LSTM_OBS_LEN,
+                 pred_len:    int   = Config.LSTM_PRED_LEN,
+                 coord_scale: float = Config.LSTM_COORD_SCALE):
         self.model       = model.to(device).eval()
         self.scaler      = scaler
         self.device      = device
@@ -304,8 +298,8 @@ class TrajectoryPredictor:
     def get_collision_risk_pairs(
         self,
         active_ids:   list,
-        threshold_px: float = LSTM_COLLISION_PX,
-        check_steps:  int   = LSTM_COLLISION_FRAMES,
+        threshold_px: float = Config.LSTM_COLLISION_PX,
+        check_steps:  int   = Config.LSTM_COLLISION_FRAMES,
     ) -> dict:
         """
         Перевіряє всі пари треків на зближення у перших check_steps
@@ -387,9 +381,9 @@ def load_motion_lstm(weights_path: str, scaler_path: str,
         return None
 
     try:
-        model = MotionLSTM(input_size=4, hidden=LSTM_HIDDEN,
-                           layers=LSTM_LAYERS, pred_len=LSTM_PRED_LEN,
-                           drop=LSTM_DROPOUT)
+        model = MotionLSTM(input_size=4, hidden=Config.LSTM_HIDDEN,
+                           layers=Config.LSTM_LAYERS, pred_len=Config.LSTM_PRED_LEN,
+                           drop=Config.LSTM_DROPOUT)
         state_dict = torch.load(weights_path, map_location=device)["model_state"]
 
         model.load_state_dict(state_dict)
@@ -400,14 +394,215 @@ def load_motion_lstm(weights_path: str, scaler_path: str,
 
         predictor = TrajectoryPredictor(
             model=model, scaler=scaler, device=device,
-            obs_len=LSTM_OBS_LEN, pred_len=LSTM_PRED_LEN,
-            coord_scale=LSTM_COORD_SCALE
+            obs_len=Config.LSTM_OBS_LEN, pred_len=Config.LSTM_PRED_LEN,
+            coord_scale=Config.LSTM_COORD_SCALE
         )
-        logger.info(f"[LSTM] MotionLSTM завантажено | obs={LSTM_OBS_LEN} pred={LSTM_PRED_LEN}")
-        print(f"  ✅ MotionLSTM завантажено (obs={LSTM_OBS_LEN}, pred={LSTM_PRED_LEN})")
+        logger.info(f"[LSTM] MotionLSTM завантажено | obs={Config.LSTM_OBS_LEN} pred={Config.LSTM_PRED_LEN}")
+        print(f"  ✅ MotionLSTM завантажено (obs={Config.LSTM_OBS_LEN}, pred={Config.LSTM_PRED_LEN})")
         return predictor
 
     except Exception as e:
         logger.error(f"[LSTM] Помилка: {e}", exc_info=True)
         print(f"  ❌ LSTM помилка: {e}")
         return None
+    
+
+
+def calculate_ttc_advanced(
+    pos_a: np.ndarray,
+    vel_a: np.ndarray,
+    pos_b: np.ndarray,
+    vel_b: np.ndarray,
+    min_relative_speed: float = 0.8,
+    max_ttc: float = 30.0,
+) -> Tuple[float, float]:
+    """
+    Просунутий розрахунок TTC (Time To Collision) з перевіркою зближення.
+
+    Відрізняється від стандартного ``calculate_ttc`` тим що:
+      1. Безпечно обробляє нульові швидкості (немає ділення на нуль).
+      2. Повертає cosine convergence разом із TTC.
+      3. Обмежує максимальне повернуте значення (max_ttc) — без нескінченностей.
+      4. Фільтрує пари з надто малою відносною швидкістю (заторна ситуація).
+
+    Алгоритм
+    ---------
+    1. rel_pos = pos_B - pos_A                       (вектор розділення)
+    2. rel_vel = vel_A - vel_B                       (відносна швидкість)
+    3. unit_sep = rel_pos / |rel_pos|                (одиничний вектор)
+    4. approach_cos = dot(rel_vel, unit_sep) / |rel_vel|
+       > 0 → зближуються, < 0 → розбігаються, 0 → перпендикулярно
+    5. closing_speed = dot(rel_vel, unit_sep)        (проекція на вісь розділення)
+    6. ttc = |rel_pos| / closing_speed               (тільки якщо > 0)
+
+    Parameters
+    ----------
+    pos_a, pos_b        : np.array([x, y]) — центроїди боксів (пікселі).
+    vel_a, vel_b        : np.array([vx, vy]) — вектори швидкості (пікс/кадр).
+    min_relative_speed  : float — мінімальна |rel_vel| для розрахунку TTC.
+                          Нижче = пара у затоостані, повертаємо (max_ttc, 0.0).
+    max_ttc             : float — обмеження max TTC (замість inf).
+
+    Returns
+    -------
+    (ttc, approach_cos) : tuple[float, float]
+        ttc         — час до зіткнення (кадри). max_ttc якщо розбігаються.
+        approach_cos — косинус між rel_vel і осю розділення [-1, 1].
+                       Дозволяє зовнішньому коду вирішити чи TTC має сенс.
+    """
+    rel_pos = pos_b - pos_a
+    rel_vel = vel_a - vel_b
+
+    dist     = float(np.linalg.norm(rel_pos))
+    rel_spd  = float(np.linalg.norm(rel_vel))
+
+    # Запобігання нестабільному TTC у заторі
+    if rel_spd < min_relative_speed:
+        return max_ttc, 0.0
+
+    if dist < 1e-9:
+        return 0.0, 1.0  # Об'єкти вже збіглись
+
+    unit_sep     = rel_pos / dist
+    approach_cos = float(np.clip(np.dot(rel_vel, unit_sep) / rel_spd, -1.0, 1.0))
+    closing_spd  = float(np.dot(rel_vel, unit_sep))  # проекція, може бути < 0
+
+    if closing_spd <= 0.0:
+        # Розбігаються або паралельний рух
+        return max_ttc, approach_cos
+
+    ttc = min(dist / closing_spd, max_ttc)
+    return float(ttc), approach_cos
+
+def cosine_approach_angle(
+    vel_a: np.ndarray,
+    vel_b: np.ndarray,
+    pos_a: np.ndarray,
+    pos_b: np.ndarray,
+) -> float:
+    """
+    Повертає кут (в градусах) між відносною швидкістю та вектором розділення.
+
+    Призначення
+    -----------
+    Зручна функція для логування та налагодження. Дає інтуїтивно зрозумілий
+    числовий показник замість косинуса.
+
+    Значення
+    ---------
+      0°   → пряме зіткнення лоб-в-лоб
+     90°   → авто рухається перпендикулярно (ковзний удар)
+    180°   → розбіжність (авто розбігаються)
+
+    Parameters
+    ----------
+    vel_a, vel_b : np.array([vx, vy]) — вектори швидкостей.
+    pos_a, pos_b : np.array([x, y]) — поточні позиції (для вектора розділення).
+
+    Returns
+    -------
+    float
+        Кут у градусах [0, 180].
+    """
+    rel_vel = vel_a - vel_b
+    rel_pos = pos_b - pos_a
+
+    nrv = float(np.linalg.norm(rel_vel))
+    nrp = float(np.linalg.norm(rel_pos))
+
+    if nrv < 1e-9 or nrp < 1e-9:
+        return 90.0  # Невизначено → нейтральний кут
+
+    cos_val = float(np.clip(np.dot(rel_vel, rel_pos) / (nrv * nrp), -1.0, 1.0))
+    return float(np.degrees(np.arccos(cos_val)))
+
+def get_velocity_smoothed(track_history: dict,tid: int,smooth_window: int = 3,) -> np.ndarray:
+    """
+    Обчислює вектор швидкості зі ковзним середнім по track_history.
+
+    Стандартний підхід (остання позиція - передостання) чутливий до bbox-джиттеру.
+    Ковзне середнє по ``smooth_window`` крокам дає стабільніший вектор.
+
+    Формула
+    -------
+    vel = mean( pos[k] - pos[k-1] для k в останніх smooth_window кроках )
+
+    Parameters
+    ----------
+    track_history  : dict {tid: deque([(x,y), ...])}
+    tid            : track ID
+    smooth_window  : кількість кроків для усереднення (default 3).
+
+    Returns
+    -------
+    np.ndarray
+        Вектор [vx, vy] у пікс/кадр. [0,0] якщо недостатньо точок.
+    """
+    pts = list(track_history.get(tid, []))
+    if len(pts) < 2:
+        return np.array([0.0, 0.0])
+
+    n  = min(smooth_window, len(pts) - 1)
+    deltas = [
+        np.array(pts[-(k)]) - np.array(pts[-(k + 1)])
+        for k in range(1, n + 1)
+    ]
+    return np.mean(deltas, axis=0).astype(np.float32)
+
+def build_accident_description(accident_objects, frame_count, fps, camera_id="", camera_location=""):
+    """
+    Приймає сирі дані про ДТП і формує детальний словник та текст для диспетчера.
+    """
+    primary_objects  = [o for o in accident_objects if o['type'] == 'primary']
+    secondary_objects = [o for o in accident_objects if o['type'] == 'secondary']
+    all_confidences   = [o['confidence'] for o in accident_objects]
+    
+    max_confidence = max(all_confidences) if all_confidences else 0.0
+    avg_confidence = sum(all_confidences) / len(all_confidences) if all_confidences else 0.0
+    
+    # Визначаємо рівень небезпеки
+    if max_confidence > 0.85:
+        severity = "CRITICAL"
+        severity_ua = "КРИТИЧНИЙ"
+    elif max_confidence > 0.70:
+        severity = "HIGH"
+        severity_ua = "ВИСОКИЙ"
+    else:
+        severity = "MEDIUM"
+        severity_ua = "СЕРЕДНІЙ"
+
+    # Рахуємо час на відео
+    minutes = int(frame_count / fps // 60)
+    seconds = int(frame_count / fps % 60)
+    timestamp_formatted = f"{minutes:02d}:{seconds:02d}"
+
+    # Формуємо красивий текст для Telegram
+    dispatcher_summary = (
+        f"⚠️ <b>ЗАФІКСОВАНО ДТП</b>\n\n"
+        f"🚗 ТЗ задіяно: {len(accident_objects)} "
+        f"({len(primary_objects)} осн., {len(secondary_objects)} поруч)\n"
+        f"🚨 Небезпека: <b>{severity_ua}</b>\n"
+        f"🎯 Впевненість ШІ: {max_confidence:.0%}\n"
+        f"⏱ Час на відео: {timestamp_formatted}\n"
+        f"📷 Камера: {camera_id or 'Не вказано'}\n"
+        f"📍 Локація: {camera_location or 'Не вказано'}"
+    )
+
+    # Збираємо все в один словник
+    return {
+        "vehicles_total": len(accident_objects),
+        "vehicles_primary": len(primary_objects),
+        "vehicles_secondary": len(secondary_objects),
+        "involved_track_ids": [o['track_id'] for o in accident_objects],
+        "max_confidence": round(max_confidence, 3),
+        "avg_confidence": round(avg_confidence, 3),
+        "severity": severity,
+        "frame_number": frame_count,
+        "timestamp_sec": round(frame_count / fps, 2),
+        "timestamp_formatted": timestamp_formatted,
+        "camera_id": camera_id,
+        "camera_location": camera_location,
+        "gps_coordinates": "",
+        "dispatcher_summary": dispatcher_summary # Готовий текст для повідомлення
+    }
+

@@ -12,49 +12,42 @@ from modules.services import (
     AccidentVideoBuffer
 )
 from modules.metrics import MetricsTracker
+from modules.config.config import Config
+from modules.notification.bot import notification_telegram_bot,schedule_notification
+
+# ROI
+if os.path.basename(Config.VIDEO_PATH) == "videoplayback.mp4":
+    '''
+        Область для відео із ДТП
+    '''
+    ROI_POLYGON = np.array([
+        (9, 216),
+        (19, 996),
+        (1450, 791),
+        (511, 230)
+    ], dtype=np.int32)
+
+elif os.path.basename(Config.VIDEO_PATH) == "highway_traffic.mp4":
+    ROI_POLYGON = np.array([
+        (931, 1074),
+        (120, 956),
+        (816, 591),
+        (1025, 597)
+    ], dtype=np.int32)
+
+else:
+    ROI_POLYGON = np.array([
+        (335, 1058),
+        (1520, 1077),
+        (1127, 591),
+        (820, 486)
+    ], dtype=np.int32)
 
 
-# ---------------------- CONFIG ----------------------
 
-DEVICE                  = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-LOG_DIR                 = r'E:\personalproject\bachelor\logs'
-OUTPUT_DIR              = os.path.join(LOG_DIR, "fragments")
-METRICS_FILE            = os.path.join(LOG_DIR, "metrics_summary.json")
-DETAILED_METRICS_FILE   = os.path.join(LOG_DIR, "detailed_metrics.json")
+os.makedirs(Config.OUTPUT_DIR,exist_ok=True)
 
-# ------------------------- WEIGHTS OF MODEL -------------------------------
-YOLO_MODEL_PATH         = r"E:\personalproject\bachelor\model\weights\yolov8-fine-tuning.pt"
-CNN_WEIGHTS_PATH        = r"E:\personalproject\bachelor\model\weights\accident_cnn_model.pth"
-LSTM_MODEL_PATH         = r"E:\personalproject\bachelor\model\weights\accident_lstm_model.pt"
-LSTM_SCALER_PATH  = r"E:\personalproject\bachelor\model\weights\motion_lstm_scaler.pkl"
-# ------------------------- WEIGHTS OF MODEL -------------------------------
-
-GROUND_TRUTH_PATH       = r"E:\personalproject\bachelor\logs\ground_truth.json" 
-
-# VIDEO_PATH = r"D:\project\highway.mp4"
-# VIDEO_PATH              = r"E:\personalproject\bachelor\data\video\videoplayback.mp4"
-VIDEO_PATH              = r"E:\personalproject\bachelor\data\video\highway_traffic.mp4"
-
-CONF_YOLO               = 0.3
-CONF_ACCIDENT_HIGH      = 0.92     # Поріг точного ДТП
-CONF_ACCIDENT_LOW       = 0.86       # Поріг попередження
-HEARTBEAT_RATE          = 10             # Як часто перевіряти авто без підозр
-LSTM_ACCIDENT_THRESH    = 0.70     # Поріг LSTM для передбачення аварії
-VIDEO_BUFFER_SECONDS    = 2.0        # Буфер до/після аварії (секунди)
-
-# ── MotionLSTM параметри (мають збігатись з тренуванням) ─────────
-LSTM_OBS_LEN         = 20      # кадрів спостереження
-LSTM_PRED_LEN        = 30      # кадрів прогнозу
-LSTM_HIDDEN          = 128
-LSTM_LAYERS          = 2
-LSTM_DROPOUT         = 0.3
-LSTM_COORD_SCALE     = 10.0     # ділення координат при тренуванні
-LSTM_COLLISION_PX    = 80       # Поріг зближення траєкторій (в пікселях після зворотного масштабування)
-LSTM_COLLISION_FRAMES= 10       # Скільки майбутніх кроків прогнозу перевіряти на зближення
-
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-log_file = os.path.join(LOG_DIR, "accident_detection.log")
+log_file = os.path.join(Config.LOG_DIR, "accident_detection.log")
 if os.path.exists(log_file):
     os.remove(log_file)
 
@@ -69,8 +62,12 @@ logger = logging.getLogger("accident_detector")
 
 # ---------------------- INIT ----------------------
 
-cnn_model, yolo_model, deepsort = load_models(DEVICE, CNN_WEIGHTS_PATH, YOLO_MODEL_PATH)
-motion_lstm = load_motion_lstm(LSTM_MODEL_PATH, LSTM_SCALER_PATH, DEVICE)
+cnn_model, yolo_model, deepsort = load_models(
+    Config.DEVICE, 
+    Config.CNN_WEIGHTS_PATH, 
+    Config.YOLO_MODEL_PATH
+)
+motion_lstm = load_motion_lstm(Config.LSTM_MODEL_PATH, Config.LSTM_SCALER_PATH, Config.DEVICE)
 logger.info(f"Models loaded successfully. MotionLSTM: {'ON' if motion_lstm else 'OFF'}")
 
 cnn_transforms = transforms.Compose([
@@ -88,7 +85,7 @@ cnn_transforms = transforms.Compose([
 def accident_detection(input_video):
 
     metrics_tracker = MetricsTracker(
-        ground_truth_path=GROUND_TRUTH_PATH,
+        ground_truth_path=Config.GROUND_TRUTH_PATH,
         auto_generate_gt=True)
 
     cap = cv2.VideoCapture(input_video)
@@ -99,41 +96,18 @@ def accident_detection(input_video):
     metrics_tracker.set_video_info(width, height, fps, total_frames, input_video)
     metrics_tracker.start_processing()
 
-    output_path = os.path.join(OUTPUT_DIR, "result.mp4")
+    output_path = os.path.join(Config.OUTPUT_DIR, "result.mp4")
     out = cv2.VideoWriter(output_path, 
                           cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height))
 
-    video_buffer = AccidentVideoBuffer(OUTPUT_DIR,fps)
-    # -------- Лінії після яких відбувається трекінг --------
-
-    '''
-        Область для відео із шосе
-    '''
-    ROI_POLYGON = np.array([
-        (931, 1074),
-        (120, 956),
-        (816, 591),
-        (1025, 597)
-    ], dtype=np.int32)
-
-    '''
-        Область для відео із ДТП
-    '''
-    # ROI_POLYGON = np.array([
-    #     (9, 216),
-    #     (19, 996),
-    #     (1450, 791),
-    #     (511, 230)
-    # ], dtype=np.int32)
-
-    # -------- END --------
+    video_buffer = AccidentVideoBuffer(Config.OUTPUT_DIR,fps)
 
     analyzer = TrafficAnalyzer(
-        collision_ttc_threshold=1.5,
-        sudden_stop_threshold=0.19,
-        min_speed_for_stop=5.0
+        collision_ttc_threshold=Config.COLLISION_TTC_THRESHOLD,
+        sudden_stop_threshold=Config.SUDDEN_STOP_THRESHOLD,
+        min_speed_for_stop=Config.MIN_SPEED_FOR_STOP
     )
-    accident_capture = AccidentFrameCapture(OUTPUT_DIR)
+    accident_capture = AccidentFrameCapture(Config.OUTPUT_DIR)
     accident_state = AccidentStateTracker()
 
     frame_count = 0
@@ -153,7 +127,6 @@ def accident_detection(input_video):
             break
         
         frame_count += 1
-        logger.info()
 
         if frame_count % 100 == 0:
             progress = (frame_count / total_frames) * 100
@@ -164,7 +137,7 @@ def accident_detection(input_video):
         '''
             ======== YOLO Inference ========
         '''
-        results = yolo_model(frame, conf=CONF_YOLO, verbose=False)
+        results = yolo_model(frame, conf=Config.CONF_YOLO, iou=0.7, verbose=False)
 
         detections =  []
         yolo_confidences = []
@@ -210,16 +183,16 @@ def accident_detection(input_video):
             active_tracks_objects.append(track)
         
         # --- Оцінка трекінгу (MOTA/IDF1) має бути ТУТ, коли boxes/ids вже заповнені ---
-        if metrics_tracker.ground_truth is not None:
-            predicted_tracks = [
-                (tid, box, 1.0)
-                for tid, box in zip(ids, boxes)
-            ]
-            metrics_tracker.update_tracking_for_evaluation(
-                frame_num=frame_count,
-                predicted_tracks=predicted_tracks,
-                iou_threshold=0.5
-            )
+        predicted_tracks = [
+            (tid, box, 1.0)
+            for tid, box in zip(ids, boxes)
+        ]
+
+        metrics_tracker.update_tracking_for_evaluation(
+            frame_num=frame_count,
+            predicted_tracks=predicted_tracks,
+            iou_threshold=0.5
+        )
 
         analyzer.update_tracks(boxes, ids)
         analyzer.clean_old_tracks(ids)
@@ -248,6 +221,7 @@ def accident_detection(input_video):
 
         crops_to_process, ids_to_process, box_map_for_cnn = [], [], []
         cnn_skipped = 0
+        sudden_stop_cache: dict = {}
 
         for i, tid in enumerate(ids):
             x1, y1, x2, y2 = boxes[i]
@@ -257,7 +231,7 @@ def accident_detection(input_video):
                 or tid in collision_risky_ids
                 or tid in lstm_risk_ids              # ← LSTM виявив ризик
                 or analyzer.detect_sudden_stop(tid, boxes, ids)
-                or frame_count % HEARTBEAT_RATE == 0
+                or frame_count % Config.HEARTBEAT_RATE == 0
             )
             
             if should_run:
@@ -311,7 +285,7 @@ def accident_detection(input_video):
                     
                     logger.info(f"[FRAME {frame_count}] CONFIRMED ACCIDENT | ID={tid} | SCORE={score:.2f}")
                 
-                elif should_confirm and eff_score > CONF_ACCIDENT_HIGH:
+                elif should_confirm and eff_score > Config.CONF_ACCIDENT_HIGH:
                     accident_state.confirm_accident(tid, frame_count)
                     
                     label = f"ACCIDENT {eff_score:.2f}"
@@ -337,7 +311,7 @@ def accident_detection(input_video):
                     
                     logger.warning(f"[FRAME {frame_count}] NEW ACCIDENT | ID={tid} | SCORE={score:.2f}")
                 
-                elif tid in collision_risky_ids and eff_score > CONF_ACCIDENT_LOW:
+                elif tid in collision_risky_ids and eff_score > Config.CONF_ACCIDENT_LOW:
                     label = f"WARNING {eff_score:.2f}"
                     color = (0, 255, 255)
                     
@@ -390,29 +364,6 @@ def accident_detection(input_video):
                         prev = cnn_results_cache.get(tid, (None, f"ID {tid}", 0.0))
                         cnn_results_cache[tid] = ((0, 0, 255), f"NEAR {prev[2]:.2f}", prev[2])
                         break
-
-        # if accident_detected_this_frame and accident_objects:
-        #     primary_positions = [obj['bbox'] for obj in accident_objects 
-        #                          if obj['type'] == 'primary']
-
-        #     for i, tid in enumerate(ids):
-        #         if tid not in [obj['track_id'] for obj in accident_objects]:
-        #             x1, y1, x2, y2 = boxes[i]
-
-        #             for px1, py1, px2, py2 in primary_positions:
-        #                 distance = calculate_box_distance(
-        #                     (x1, y1, x2, y2),
-        #                     (px1, py1, px2, py2)
-        #                 )
-
-        #                 if distance < 250:
-        #                     accident_objects.append({
-        #                         'track_id': tid,
-        #                         'bbox': (x1, y1, x2, y2),
-        #                         'confidence': cnn_results_cache.get(tid, (None, None, 0.0))[2],
-        #                         'type': 'secondary'
-        #                     })
-        #                     break
             
             should_save = any(
                 accident_capture.should_save_accident(obj['track_id'], frame_count)
@@ -420,26 +371,96 @@ def accident_detection(input_video):
             )
 
             if should_save:
-                video_buffer.trigger(frame_count)
-                saved_path = accident_capture.save_accident_frame(
+                accident_photo_path = accident_capture.save_accident_frame(
                     frame=frame,
                     frame_number=frame_count,
                     accident_objects=accident_objects,
                     video_path=input_video
                 )
+                # video_buffer.trigger(frame_count)
+                # saved_path = accident_capture.save_accident_frame(
+                #     frame=frame,
+                #     frame_number=frame_count,
+                #     accident_objects=accident_objects,
+                #     video_path=input_video
+                # )
+                accident_video_path = video_buffer.trigger(frame_count)
 
-                """
-                    FUNCTION OF NOTIFICATIONS
-                """
+                primary_objects  = [o for o in accident_objects if o['type'] == 'primary']
+                secondary_objects = [o for o in accident_objects if o['type'] == 'secondary']
+                all_confidences   = [o['confidence'] for o in accident_objects]
+                max_confidence    = max(all_confidences) if all_confidences else 0.0
+                avg_confidence    = sum(all_confidences) / len(all_confidences) if all_confidences else 0.0
+
+                accident_description = {
+                    # --- Транспортні засоби ---
+                    "vehicles_total":          len(accident_objects),
+                    "vehicles_primary":        len(primary_objects),
+                    "vehicles_secondary":      len(secondary_objects),
+                    "involved_track_ids":      [o['track_id'] for o in accident_objects],
+
+                    # --- Оцінка серйозності ---
+                    "max_confidence":          round(max_confidence, 3),
+                    "avg_confidence":          round(avg_confidence, 3),
+                    "severity":                (
+                        "CRITICAL" if max_confidence > 0.85 else
+                        "HIGH"     if max_confidence > 0.70 else
+                        "MEDIUM"
+                    ),
+
+                    # --- Часові мітки ---
+                    "frame_number":            frame_count,
+                    "timestamp_sec":           round(frame_count / fps, 2),
+                    "timestamp_formatted":     (
+                        f"{int(frame_count / fps // 60):02d}:"
+                        f"{int(frame_count / fps % 60):02d}"
+                    ),
+
+                    # --- Місцезнаходження (заповнити вручну) ---
+                    "camera_id":               "",   # TODO: ідентифікатор камери
+                    "camera_location":         "",   # TODO: адреса / назва перехрестя
+                    "gps_coordinates":         "",   # TODO: координати GPS
+
+                    # --- Артефакти ---
+                    "photo_path":              accident_photo_path,
+                    "video_path":              accident_video_path,
+
+                    # --- Опис для диспетчера ---
+                    "dispatcher_summary": (
+                        f"⚠️ ЗАФІКСОВАНО ДТП | {len(accident_objects)} ТЗ задіяно "
+                        f"({len(primary_objects)} основних, {len(secondary_objects)} поруч). "
+                        f"Ступінь небезпеки: {(' 🔴КРИТИЧНИЙ' if max_confidence > 0.90 else '🟠ВИСОКИЙ' if max_confidence > 0.85 else '🟡СЕРЕДНІЙ')}. "
+                        f"Впевненість системи: {max_confidence:.0%}. "
+                        f"⏰Час на відео: {int(frame_count / fps // 60):02d}:{int(frame_count / fps % 60):02d}. \n"
+                        f"📷Камера: {'' or 'ТЕСТУВАННЯ'}."
+                    ),
+                }
+
+                post_delay = 4.0 if accident_video_path is None else 0.0
+                schedule_notification(
+                    photo_path=accident_photo_path,
+                    video_path=accident_video_path,
+                    description=accident_description,
+                    delay_sec=post_delay
+                )
+        
+                notification_telegram_bot(
+                    photo_path=accident_photo_path,
+                    video_path=accident_video_path,
+                    description=accident_description
+                )
 
                 logger.critical(
                     f"[ACCIDENT SAVED] Frame {frame_count} | "
                     f"Vehicles: {len(accident_objects)} | "
-                    f"Saved to: {saved_path}"
+                    f"Severity: {accident_description['severity']} | "
+                    f"Saved photo: {accident_photo_path} | "
+                    f"Saved video: {accident_video_path}"
                 )
+                logger.info(f"Telegram notification sent:")
 
         collision_warnings = len(collision_risky_ids)
-        sudden_stops = sum(1 for tid in ids if analyzer.detect_sudden_stop(tid, boxes, ids))
+        sudden_stops = sum(1 for tid in ids if sudden_stop_cache.get(tid, False))
         
         metrics_tracker.update_accident_metrics(
             accident_detected_this_frame,
@@ -480,26 +501,6 @@ def accident_detection(input_video):
                 risk_val = lstm_risk_scores.get(tid, 0.0)
                 cv2.putText(frame, f"L:{risk_val:.2f}", (x1, y2 + 15),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 165, 255), 1)
-        # for i, tid in enumerate(ids):
-        #     x1, y1, x2, y2 = boxes[i]
-            
-        #     # Малюємо траєкторію
-        #     points = analyzer.track_history.get(tid, [])
-        #     if len(points) > 1:
-        #         pts = np.array(points, dtype=np.int32).reshape((-1, 1, 2))
-        #         cv2.polylines(frame, [pts], isClosed=False, 
-        #                       color=(255, 0, 0), thickness=2)
-
-        #     # Беремо дані з кешу
-        #     if tid in cnn_results_cache:
-        #         color, label, score = cnn_results_cache[tid]
-        #     else:
-        #         color, label = (255, 255, 255), f"ID {tid}" # White defaults
-
-        #     # Малюємо бокс і текст
-        #     cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-        #     cv2.putText(frame, label, (x1, y1-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-
         out.write(frame)
 
         frame_time = ((cv2.getTickCount() - frame_start) / cv2.getTickFrequency()) * 1000
@@ -508,20 +509,20 @@ def accident_detection(input_video):
     cap.release()
     out.release()
 
+    # ===================== METRICS PART SUMMARY =========================
     final_metrics = metrics_tracker.finalize()
-
     analyzer_metrics = analyzer.get_metrics_summary()
     final_metrics['analyzer'] = analyzer_metrics
-    metrics_tracker.save_to_file(METRICS_FILE)
+    metrics_tracker.save_to_file(Config.METRICS_FILE)
 
     summary = accident_capture.get_accident_summary()
     metrics_tracker.print_summary()
-    metrics_tracker.save_all_plots(OUTPUT_DIR)
+    metrics_tracker.save_all_plots(Config.OUTPUT_DIR)
 
     print(f"\n{'*'*70}")
-    print(" "*20 + "ЗВЕДЕННЯ ПО АВАРІЯХ")
+    print(" "*20 + "ЗВЕДЕННЯ ПО АВАРІЯХ") # ТРЕБА ПЕРЕВІРИТИ НЕ КОРЕКТНО
     print(f"{'*'*70}")
-    print(f"Всього аварій:          {summary['total_accidents']}")
+    print(f"Всього аварій:          {summary['total_accidents']}") # Не правильно рахує
     print(f"Всього авто задіяно:    {summary.get('total_vehicles_involved', 0)}")
     print(f"Унікальних авто:        {summary.get('unique_vehicles', 0)}")
     if motion_lstm:
@@ -533,7 +534,7 @@ def accident_detection(input_video):
     
     print(f"Обробку завершено!")
     print(f"Відео збережено: {output_path}")
-    print(f"Метрики збережено: {METRICS_FILE}")
+    print(f"Метрики збережено: {Config.METRICS_FILE}")
     
     logger.info(f"Processing finished. Output: {output_path}")
     return output_path
@@ -542,7 +543,7 @@ def accident_detection(input_video):
 # ---------------------- ENTRY POINT ----------------------
 if __name__ == "__main__":
     try:
-        output_path = accident_detection(VIDEO_PATH)
+        output_path = accident_detection(Config.VIDEO_PATH)
         print(f"\nУспішно завершено!")
     except Exception as e:
         logger.error(f"Critical error: {e}", exc_info=True)

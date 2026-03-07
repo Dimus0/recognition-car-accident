@@ -4,6 +4,8 @@ import os
 from datetime import datetime
 from typing import List, Tuple, Dict,Union
 from collections import defaultdict, deque
+from modules.config.config import Config
+
 
 class AccidentStateTracker:
     """
@@ -17,7 +19,7 @@ class AccidentStateTracker:
         self.confirmed_accidents = {}
         
         # Час життя підтвердженої аварії (кількість кадрів)
-        self.accident_lifetime = 90  # ~3 секунди при 30 FPS
+        self.accident_lifetime = Config.ACCIDENT_LIFETIME  # ~3 секунди при 30 FPS
         
         # Мінімальна кількість високих скорів для підтвердження
         self.confirmation_threshold = 3

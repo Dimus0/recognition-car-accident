@@ -315,9 +315,15 @@ class MetricsTracker:
         Зберігає predicted треки для frame_num і одразу
         порівнює з ground truth якщо є.
         predicted_tracks: list of (tid, bbox, conf)
+
+        ВАЖЛИВО: predictions зберігаються ЗАВЖДИ — навіть якщо ground_truth
+        ще не завантажено. Це необхідно для auto_generate_gt режиму, де
+        _auto_generate_ground_truth() будує pseudo-GT з цих predictions у finalize().
         """
+        # Завжди зберігаємо predictions (потрібно для auto_generate_gt)
         self.tracking_data["predictions"][frame_num] = predicted_tracks
 
+        # Порівнюємо з GT тільки якщо він вже є
         if self.ground_truth:
             gt_tracks = self._get_ground_truth_tracks(frame_num)
             self.tracking_data["ground_truth"][frame_num] = gt_tracks
@@ -756,7 +762,7 @@ class MetricsTracker:
         det_pf = m['detection']['yolo']['detections_per_frame']
         print(f"  Середньо/кадр:     {np.mean(det_pf):.1f}" if det_pf else "  Середньо/кадр: N/A")
 
-        print("\n🧠 CNN:")
+        print("\n🧠 CNN:") 
         print(f"  Інференсів:        {m['detection']['cnn']['total_inferences']}")
         print(f"  Середній час:      {m['detection']['cnn']['avg_inference_time_ms']} мс")
         print(f"  High (>0.9):       {m['detection']['cnn']['high_confidence_predictions']}")

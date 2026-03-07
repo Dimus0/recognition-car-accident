@@ -7,7 +7,7 @@ def show_frame(frame):
 
     cv2.namedWindow("test",cv2.WINDOW_NORMAL)
     cv2.setMouseCallback("test", mouse)
-    cv2.resizeWindow("test",1920,1080)
+    cv2.resizeWindow("test", 1280,1024)
 
     while True:
         cv2.imshow("test", frame)

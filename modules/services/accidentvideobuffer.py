@@ -2,26 +2,18 @@ import cv2
 import numpy as np
 import torch
 import torch.nn as nn
-import random
-import pickle
-from torchvision import transforms
 from collections import deque, defaultdict
-from sklearn.preprocessing import StandardScaler
 import logging
 import os
 from modules.utils import *
-from modules.services.analyzer import TrafficAnalyzer
-from modules.services.accidenttracker import AccidentStateTracker
-from modules.services.accidentcapture import AccidentFrameCapture
-from modules.metrics import MetricsTracker
+from modules.config.config import Config
 
-VIDEO_BUFFER_SECONDS    = 2.0        # Буфер до/після аварії (секунди)
 logger = logging.getLogger("accident_detector")
 
 class AccidentVideoBuffer:
     def __init__(self, output_dir: str, fps: float,
-                 before_sec: float = VIDEO_BUFFER_SECONDS,
-                 after_sec:  float = VIDEO_BUFFER_SECONDS):
+                 before_sec: float = Config.VIDEO_BUFFER_SECONDS,
+                 after_sec:  float = Config.VIDEO_BUFFER_SECONDS):
         self.output_dir    = output_dir
         self.fps           = fps
         self.before_frames = max(1, int(fps * before_sec))
