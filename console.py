@@ -13,7 +13,7 @@ from modules.services import (
 )
 from modules.metrics import MetricsTracker
 from modules.config.config import Config
-from modules.notification.bot import notification_telegram_bot,schedule_notification
+from modules.notification.bot import schedule_notification
 
 # ROI
 if os.path.basename(Config.VIDEO_PATH) == "videoplayback.mp4":
@@ -113,6 +113,8 @@ def accident_detection(input_video):
     frame_count = 0
     cnn_results_cache = {}
 
+    notified_accidents: set = set()
+
     logger.info(f"Starting processing: {total_frames} frames | LSTM: {'ON' if motion_lstm else 'OFF'}")
 
     """
@@ -131,6 +133,8 @@ def accident_detection(input_video):
         if frame_count % 100 == 0:
             progress = (frame_count / total_frames) * 100
             print(f"Progress: {progress:.1f}% ({frame_count}/{total_frames})")
+
+        clean_frame = frame.copy()
 
         cv2.polylines(frame, [ROI_POLYGON], isClosed=True, color=(255, 0, 0), thickness=2)
 
@@ -204,6 +208,7 @@ def accident_detection(input_video):
 
         lstm_risk_scores = {}
         lstm_risk_ids = set()
+        lstm_predicted_positions = {}
 
         if motion_lstm:
 
@@ -215,9 +220,25 @@ def accident_detection(input_video):
 
             lstm_risk_scores = motion_lstm.get_collision_risk_pairs(ids)
             lstm_risk_ids = set(lstm_risk_scores.keys())
-            motion_lstm.cleanup(ids)
-
             metrics_tracker.update_lstm_metrics(lstm_risk_scores)
+
+            if hasattr(motion_lstm, 'get_predicted_positions'):
+                lstm_predicted_positions = motion_lstm.get_predicted_positions(ids,steps=10)
+                if lstm_predicted_positions:
+                    analyzer.update_predicted_positions(lstm_predicted_positions)
+
+            lstm_high_risk_ids = {
+                tid for tid, risk in lstm_risk_scores.items() if risk >= 0.65
+            }
+
+            collision_risky_ids = collision_risky_ids | lstm_high_risk_ids
+
+            if lstm_high_risk_ids:
+                logger.info(
+                    f"[FRAME {frame_count}] LSTM high-risk IDs added to collision_risky: "
+                    f"{lstm_high_risk_ids} | scores: "
+                    f"{ {tid: round(lstm_risk_scores[tid], 2) for tid in lstm_high_risk_ids} }"
+                )
 
         crops_to_process, ids_to_process, box_map_for_cnn = [], [], []
         cnn_skipped = 0
@@ -256,8 +277,9 @@ def accident_detection(input_video):
             for (x1, y1, x2, y2), score, tid in zip(box_map_for_cnn, scores, ids_to_process):
                 # LSTM підсилення score: якщо прогноз показує зіткнення
                 # і CNN на межі — злегка підштовхуємо через ризик
-                lstm_boost = lstm_risk_scores.get(tid, 0.0) * 0.05
-                eff_score = min(1.0, score +lstm_boost)
+                lstm_risk = lstm_risk_scores.get(tid,0.0)
+                lstm_boost = (lstm_risk ** 2) * 0.25 * score
+                eff_score = min(1.0, score + lstm_boost)
 
                 accident_state.update_score(tid, eff_score, frame_count)
                 is_already_confirmed = accident_state.is_confirmed_accident(tid)
@@ -334,8 +356,6 @@ def accident_detection(input_video):
                         )
                     
                     logger.info(f"[FRAME {frame_count}] WARNING | ID={tid} | SCORE={eff_score:.2f}")
-
-                    if tid not in noti
                 
                 else:
                     if tid in lstm_risk_ids:
@@ -430,8 +450,8 @@ def accident_detection(input_video):
                     # --- Опис для диспетчера ---
                     "dispatcher_summary": (
                         f"⚠️ ЗАФІКСОВАНО ДТП | {len(accident_objects)} ТЗ задіяно "
-                        f"({len(primary_objects)} основних, {len(secondary_objects)} поруч). "
-                        f"Ступінь небезпеки: {(' 🔴КРИТИЧНИЙ' if max_confidence > 0.90 else '🟠ВИСОКИЙ' if max_confidence > 0.85 else '🟡СЕРЕДНІЙ')}. "
+                        f"({len(primary_objects)} основних, {len(secondary_objects)} поруч). \n"
+                        f"Ступінь небезпеки: {(' 🔴КРИТИЧНИЙ' if max_confidence > 0.90 else '🟠ВИСОКИЙ' if max_confidence > 0.85 else '🟡СЕРЕДНІЙ')}. \n"
                         f"Впевненість системи: {max_confidence:.0%}. "
                         f"⏰Час на відео: {int(frame_count / fps // 60):02d}:{int(frame_count / fps % 60):02d}. \n"
                         f"📷Камера: {'' or 'ТЕСТУВАННЯ'}."
@@ -439,18 +459,19 @@ def accident_detection(input_video):
                 }
 
                 post_delay = 4.0 if accident_video_path is None else 0.0
-                schedule_notification(
-                    photo_path=accident_photo_path,
-                    video_path=accident_video_path,
-                    description=accident_description,
-                    delay_sec=post_delay
-                )
-        
-                notification_telegram_bot(
-                    photo_path=accident_photo_path,
-                    video_path=accident_video_path,
-                    description=accident_description
-                )
+                new_ids = {
+                    obj['track_id']
+                    for obj in accident_objects
+                    if obj['type'] == 'primary' and obj['track_id'] not in notified_accidents
+                }
+                if new_ids:
+                    notified_accidents.update(new_ids)
+                    schedule_notification(
+                        photo_path=accident_photo_path,
+                        video_path=accident_video_path,
+                        description=accident_description,
+                        delay_sec=post_delay
+                    )
 
                 logger.critical(
                     f"[ACCIDENT SAVED] Frame {frame_count} | "
@@ -470,6 +491,9 @@ def accident_detection(input_video):
             collision_warnings,
             sudden_stops
         )
+
+        if motion_lstm:
+            motion_lstm.cleanup(ids)
 
         # 7. Візуалізація (Draw Loop)
         if motion_lstm:

@@ -51,10 +51,15 @@ class MetricsTracker:
 
     def _load_ground_truth(self) -> Optional[Dict]:
         if not os.path.exists(self.ground_truth_path):
-            print(f"⚠️ Ground truth не знайдено: {self.ground_truth_path}")
-            # BUG FIX: повертаємо None, щоб self.ground_truth залишався None
-            # і метрики mAP/MOTA не рахувались на порожніх даних
+            print(f"⚠️ Ground truth не знайдено: {self.ground_truth_path} -> Відбувається створення...")
+            empty_gt = {
+                "meta": {"note": "Auto-generated empty Ground Truth"},
+                "frame_annotations": {}
+            }
+            with open(self.ground_truth_path, "w", encoding="utf-8") as f:
+                json.dump(empty_gt, f, indent=4, ensure_ascii=False)
             return None
+        
         if os.path.getsize(self.ground_truth_path) == 0:
             return None
         with open(self.ground_truth_path, "r", encoding="utf-8") as f:
