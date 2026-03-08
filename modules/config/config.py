@@ -35,6 +35,8 @@ class Config:
     HEARTBEAT_RATE = 10         # Як часто перевіряти авто без підозр
     VIDEO_BUFFER_SECONDS = 2.0  # Буфер до/після аварії
 
+    # ----------------------- BOT-SORT
+
     # ------------------ 4. MOTION LSTM ------------------
     LSTM_OBS_LEN = 20
     LSTM_PRED_LEN = 30
