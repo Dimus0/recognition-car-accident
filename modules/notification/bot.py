@@ -16,6 +16,7 @@ def notification_telegram_bot(photo_path, video_path, description):
     Надсилає фото + відео ДТП у Telegram.
     Якщо video_path=None або файл ще не готовий — надсилає тільки фото.
     """
+
     if not photo_path or not os.path.exists(photo_path):
         print(f"ERROR: Фото не знайдено: {photo_path!r}")
         return None
@@ -58,17 +59,17 @@ def notification_telegram_bot(photo_path, video_path, description):
             try:
                 response = requests.post(api_url, data=data, files=files)
                 response.raise_for_status()
-                print("✅ Фото + відео ДТП відправлені успішно!")
+                print("Фото + відео ДТП відправлені успішно!")
                 return response.json()
             except requests.exceptions.RequestException as e:
-                print(f"❌ Помилка відправки медіагрупи: {e}")
+                print(f"Помилка відправки медіагрупи: {e}")
                 if hasattr(e, 'response') and e.response is not None:
                     print(f"   Telegram деталі: {e.response.text}")
                 return None
 
     # ── Fallback: тільки фото якщо відео недоступне ─────────────────────────
     else:
-        print(f"⚠️  Відео не готове ({video_path!r}), надсилаємо тільки фото.")
+        print(f"Відео не готове ({video_path!r}), надсилаємо тільки фото.")
         api_url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
 
         with open(photo_path, 'rb') as photo_file:
@@ -78,23 +79,44 @@ def notification_telegram_bot(photo_path, video_path, description):
             try:
                 response = requests.post(api_url, data=data, files=files)
                 response.raise_for_status()
-                print("✅ Фото ДТП відправлено (без відео).")
+                print("Фото ДТП відправлено (без відео).")
                 return response.json()
             except requests.exceptions.RequestException as e:
-                print(f"❌ Помилка відправки фото: {e}")
+                print(f"Помилка відправки фото: {e}")
                 return None
 
 
-def schedule_notification(photo_path, video_path, description, delay_sec):
+def schedule_notification(
+    photo_path:   str,
+    video_path:   str,
+    description,
+    delay_sec:    float = 0.0,
+    poll_timeout: float = 60.0,
+    poll_interval: float = 0.5,
+):
     """
-    Відправляє сповіщення через delay_sec секунд (у окремому потоці).
-    Використовується коли відео ще не дозаписане (post_seconds буфер).
+    Надсилає сповіщення у фоновому потоці.
+
     """
     def _send():
-        time.sleep(delay_sec)
+        if delay_sec > 0:
+            time.sleep(delay_sec)
+
+        if video_path:
+            waited = 0.0
+            while waited < poll_timeout:
+                if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
+                    print(f"Відео готове після {waited + delay_sec:.1f}с: {video_path}")
+                    break
+                time.sleep(poll_interval)
+                waited += poll_interval
+            else:
+                print(f"Відео не з'явилось за {poll_timeout}с, надсилаємо без відео.")
+
         notification_telegram_bot(photo_path, video_path, description)
 
-    t = threading.Thread(target=_send, daemon=True)
+    t = threading.Thread(target=_send, daemon=True, name="tg-notify")
     t.start()
-    print(f"Сповіщення заплановано через {delay_sec}с (очікуємо дозапис відео)...")
+    total_max = delay_sec + poll_timeout
+    print(f"Сповіщення заплановано (polling, max {total_max:.0f}с)...")
     return t

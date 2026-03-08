@@ -9,13 +9,15 @@ class Config:
     BASE_DIR = r"E:\personalproject\bachelor"
     LOG_DIR = os.path.join(BASE_DIR, "logs")
     OUTPUT_DIR = os.path.join(LOG_DIR, "fragments")
+    OUTPUT_DIR_CLIP = os.path.join(OUTPUT_DIR, "clip")
     METRICS_FILE = os.path.join(LOG_DIR, "metrics_summary.json")
-    DETAILED_METRICS_FILE = os.path.join(LOG_DIR, "detailed_metrics.json")
+    ARTIFACTS_PATH = os.path.join(LOG_DIR,"artifacts")
+    
     GROUND_TRUTH_PATH = os.path.join(LOG_DIR, "ground_truth.json")
 
 
-    VIDEO_PATH                = r"E:\personalproject\bachelor\data\video\videoplayback.mp4"
-    # VIDEO_PATH              = r"E:\personalproject\bachelor\data\video\highway_traffic.mp4"
+    # VIDEO_PATH                = r"E:\personalproject\bachelor\data\video\videoplayback.mp4"
+    VIDEO_PATH              = r"E:\personalproject\bachelor\data\video\highway_traffic.mp4"
     # VIDEO_PATH              = r"E:\personalproject\bachelor\data\video\traffic.mp4"
 
     # ------------------ 2. MODELS ------------------

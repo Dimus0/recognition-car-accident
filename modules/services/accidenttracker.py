@@ -34,26 +34,40 @@ class AccidentStateTracker:
             return False
         return True
     
-    def should_confirm_accident(self, track_id: int, current_score: float) -> bool:
+    def should_confirm_accident(
+        self,
+        track_id:    int,
+        current_score: float,
+        lstm_risk:   float = 0.0,
+    ) -> bool:
         """
-        Визначає чи потрібно підтвердити аварію на основі історії скорів
-        Логіка: не один високий скор, а стабільно високі значення
+        Визначає чи потрібно підтвердити аварію на основі історії CNN-скорів.
+        Якщо LSTM також вказує на ризик — пороги знижуються, бо дві незалежні
+        моделі погоджуються між собою.
+
+        Адаптивні пороги залежно від lstm_risk
+        ----------------------------------------
+        lstm_risk = 0.0  → avg > 0.85, min > 0.75  (базовий, суворий)
+        lstm_risk = 0.5  → avg > 0.78, min > 0.68
+        lstm_risk = 0.8  → avg > 0.72, min > 0.62
+        lstm_risk ≥ 1.0  → avg > 0.68, min > 0.58  (максимальне зниження)
         """
         history = list(self.cnn_score_history[track_id])
-        
+
         if len(history) < self.confirmation_threshold:
             return False
-        
-        # Беремо останні N скорів
+
         recent_scores = history[-self.confirmation_threshold:]
-        
-        # Підтверджуємо якщо:
-        # 1. Середній скор > 0.85
-        # 2. Мінімальний скор > 0.75
         avg_score = sum(recent_scores) / len(recent_scores)
         min_score = min(recent_scores)
-        
-        return avg_score > 0.85 and min_score > 0.75
+
+        # LSTM-aware пороги: кожен 0.1 ризику знижує поріг на 0.017 / 0.017
+        # Максимальне зниження обмежено щоб уникнути хибних спрацьовувань
+        reduction   = min(lstm_risk, 1.0) * 0.17
+        avg_thresh  = 0.85 - reduction
+        min_thresh  = 0.75 - reduction
+
+        return avg_score > avg_thresh and min_score > min_thresh
     
     def confirm_accident(self, track_id: int, frame_number: int):
         """Підтверджує аварію для track_id"""

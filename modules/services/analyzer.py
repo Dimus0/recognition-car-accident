@@ -109,6 +109,10 @@ class TrafficAnalyzer:
         self.collision_pairs_history: Dict[tuple, int] = {}
         self.collision_cooldown = 30
 
+        # ── LSTM predicted positions {tid: ndarray(steps, 2)} ──────────────
+        # Оновлюється кожен кадр через update_predicted_positions()
+        self._lstm_predicted: Dict[int, np.ndarray] = {}
+
         # ── Метрики ──────────────────────────────────────────────────────────
         self.metrics = {
             'total_frames_processed':    0,
@@ -161,6 +165,67 @@ class TrafficAnalyzer:
             self.metrics['total_vehicles_tracked'].add(tid)
 
         self.metrics['processing_times'].append((time.time() - start_time) * 1000)
+
+    def update_predicted_positions(self, predicted: Dict[int, np.ndarray]):
+        """
+        Отримує передбачені позиції від LSTM (TrajectoryPredictor.get_predicted_positions).
+        Зберігає для використання в predict_collision() як додатковий сигнал ризику.
+
+        Parameters
+        ----------
+        predicted : {tid: ndarray(steps, 2)}  — майбутні позиції у пікселях
+        """
+        self._lstm_predicted = predicted if predicted else {}
+
+    def _predict_collision_lstm(
+        self,
+        ids:          List[int],
+        boxes:        List[Tuple],
+        centers:      Dict[int, np.ndarray],
+        existing_risky: Set[int],
+    ) -> Set[int]:
+        """
+        Перевіряє передбачені траєкторії (з LSTM) на майбутні зіткнення.
+        Пари що не пройшли стандартний TTC але мають небезпечні прогнози
+        також додаються до risky set.
+
+        Логіка: якщо у будь-якому з перших steps кроків прогнозована відстань
+        між двома треками менша за collision_distance → ризик підтверджений.
+        """
+        lstm_risky: Set[int] = set()
+        tids_with_pred = [tid for tid in ids if tid in self._lstm_predicted]
+
+        if len(tids_with_pred) < 2:
+            return lstm_risky
+
+        for i in range(len(tids_with_pred)):
+            for j in range(i + 1, len(tids_with_pred)):
+                tid_a = tids_with_pred[i]
+                tid_b = tids_with_pred[j]
+
+                # Вже підтверджені — пропускаємо
+                if tid_a in existing_risky and tid_b in existing_risky:
+                    continue
+
+                traj_a = self._lstm_predicted[tid_a].astype(float)
+                traj_b = self._lstm_predicted[tid_b].astype(float)
+                steps  = min(len(traj_a), len(traj_b))
+                if steps == 0:
+                    continue
+
+                dists    = np.linalg.norm(traj_a[:steps] - traj_b[:steps], axis=1)
+                min_dist = float(dists.min())
+
+                # Поріг: трохи м'якший ніж поточний collision_distance
+                # бо прогноз має певну похибку
+                lstm_thresh = self.collision_distance * 1.5
+
+                if min_dist < lstm_thresh:
+                    lstm_risky.add(tid_a)
+                    lstm_risky.add(tid_b)
+                    self.metrics['collision_warnings'] += 1
+
+        return lstm_risky
 
     def predict_collision(
         self,
@@ -298,6 +363,13 @@ class TrafficAnalyzer:
                 # cosine_approach_angle (utils.py) -- кут зближення у градусах.
                 # 0 = лоб-в-лоб, 90 = косий удар. Тільки для логування / налагодження.
                 _angle = cosine_approach_angle(vel_a, vel_b, pos_a, pos_b)
+
+        # ── Доповнюємо через LSTM прогнози ───────────────────────────────────
+        # Стандартний TTC базується на поточних швидкостях (лінійна екстраполяція).
+        # LSTM передбачає нелінійні траєкторії — ловить маневри яких TTC не бачить.
+        if self._lstm_predicted:
+            lstm_extra = self._predict_collision_lstm(ids, boxes, centers, risky)
+            risky = risky | lstm_extra
 
         return risky
 

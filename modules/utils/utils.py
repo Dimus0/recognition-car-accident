@@ -351,6 +351,59 @@ class TrajectoryPredictor:
                 cv2.circle(frame, tuple(traj[-1]), 5, color, -1)
         return frame
 
+    def get_predicted_positions(self, active_ids: list, steps: int = 10) -> dict:
+        """
+        Повертає {tid: ndarray(steps, 2)} — передбачені абсолютні позиції (пікселі).
+        Використовується в analyzer.update_predicted_positions() для TTC на прогнозах.
+        Повертає тільки треки у active_ids що мають прогноз.
+        """
+        result = {}
+        for tid in active_ids:
+            if tid in self.predictions:
+                result[tid] = self.predictions[tid][:steps]
+        return result
+
+    def get_collision_risk_ttc(
+        self,
+        active_ids:   list,
+        threshold_px: float = Config.LSTM_COLLISION_PX,
+        check_steps:  int   = Config.LSTM_COLLISION_FRAMES,
+    ) -> dict:
+        """
+        Розширена версія get_collision_risk_pairs — додатково обчислює
+        «прогнозований TTC» на основі передбачених траєкторій.
+        Повертає {tid: risk} де risk включає і proximity, і predicted-TTC.
+        """
+        risk: dict = {}
+        tids_pred = [tid for tid in active_ids if tid in self.predictions]
+        if len(tids_pred) < 2:
+            return risk
+
+        for i in range(len(tids_pred)):
+            for j in range(i + 1, len(tids_pred)):
+                tid_i = tids_pred[i]
+                tid_j = tids_pred[j]
+                traj_i = self.predictions[tid_i][:check_steps].astype(float)
+                traj_j = self.predictions[tid_j][:check_steps].astype(float)
+                dists  = np.linalg.norm(traj_i - traj_j, axis=1)
+                min_d  = float(dists.min())
+                min_step = int(np.argmin(dists))
+
+                if min_d < threshold_px:
+                    # Proximity risk (як раніше)
+                    prox_score = max(0.0, 1.0 - min_d / threshold_px)
+
+                    # Predicted-TTC: крок найближчого зближення / загальна кількість кроків
+                    # Чим раніше зіткнення → вищий ризик
+                    ttc_score = 1.0 - min_step / max(check_steps, 1)
+
+                    # Комбінований score: 60% proximity + 40% predicted-TTC
+                    combined = 0.6 * prox_score + 0.4 * ttc_score
+
+                    risk[tid_i] = max(risk.get(tid_i, 0.0), combined)
+                    risk[tid_j] = max(risk.get(tid_j, 0.0), combined)
+        return risk
+
     # ── Очистка мертвих треків ─────────────────────────────────
 
     def cleanup(self, active_ids: list):
@@ -398,12 +451,12 @@ def load_motion_lstm(weights_path: str, scaler_path: str,
             coord_scale=Config.LSTM_COORD_SCALE
         )
         logger.info(f"[LSTM] MotionLSTM завантажено | obs={Config.LSTM_OBS_LEN} pred={Config.LSTM_PRED_LEN}")
-        print(f"  ✅ MotionLSTM завантажено (obs={Config.LSTM_OBS_LEN}, pred={Config.LSTM_PRED_LEN})")
+        print(f"  MotionLSTM завантажено (obs={Config.LSTM_OBS_LEN}, pred={Config.LSTM_PRED_LEN})")
         return predictor
 
     except Exception as e:
         logger.error(f"[LSTM] Помилка: {e}", exc_info=True)
-        print(f"  ❌ LSTM помилка: {e}")
+        print(f" LSTM помилка: {e}")
         return None
     
 
@@ -561,34 +614,32 @@ def build_accident_description(accident_objects, frame_count, fps, camera_id="",
     avg_confidence = sum(all_confidences) / len(all_confidences) if all_confidences else 0.0
     
     # Визначаємо рівень небезпеки
-    if max_confidence > 0.85:
-        severity = "CRITICAL"
-        severity_ua = "КРИТИЧНИЙ"
-    elif max_confidence > 0.70:
-        severity = "HIGH"
-        severity_ua = "ВИСОКИЙ"
+    if max_confidence > 0.95:
+        severity = "🔴CRITICAL"
+        severity_ua = "🔴КРИТИЧНИЙ"
+    elif max_confidence > 0.85:
+        severity = "🟠HIGH"
+        severity_ua = "🟠ВИСОКИЙ"
     else:
-        severity = "MEDIUM"
-        severity_ua = "СЕРЕДНІЙ"
+        severity = "🟡MEDIUM"
+        severity_ua = "🟡СЕРЕДНІЙ"
 
     # Рахуємо час на відео
     minutes = int(frame_count / fps // 60)
     seconds = int(frame_count / fps % 60)
     timestamp_formatted = f"{minutes:02d}:{seconds:02d}"
 
-    # Формуємо красивий текст для Telegram
     dispatcher_summary = (
-        f"⚠️ <b>ЗАФІКСОВАНО ДТП</b>\n\n"
+        f"🔔 <b>ЗАФІКСОВАНО ДТП</b>\n\n"
         f"🚗 ТЗ задіяно: {len(accident_objects)} "
         f"({len(primary_objects)} осн., {len(secondary_objects)} поруч)\n"
-        f"🚨 Небезпека: <b>{severity_ua}</b>\n"
-        f"🎯 Впевненість ШІ: {max_confidence:.0%}\n"
+        f"🚨Небезпека: <b>{severity_ua}</b>\n"
+        f"🎯 Впевненість системи: {max_confidence:.0%}\n"
         f"⏱ Час на відео: {timestamp_formatted}\n"
         f"📷 Камера: {camera_id or 'Не вказано'}\n"
         f"📍 Локація: {camera_location or 'Не вказано'}"
     )
 
-    # Збираємо все в один словник
     return {
         "vehicles_total": len(accident_objects),
         "vehicles_primary": len(primary_objects),
@@ -605,4 +656,3 @@ def build_accident_description(accident_objects, frame_count, fps, camera_id="",
         "gps_coordinates": "",
         "dispatcher_summary": dispatcher_summary # Готовий текст для повідомлення
     }
-
