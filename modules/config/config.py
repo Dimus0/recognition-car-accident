@@ -16,7 +16,7 @@ class Config:
     GROUND_TRUTH_PATH = os.path.join(LOG_DIR, "ground_truth.json")
 
 
-    # VIDEO_PATH                = r"E:\personalproject\bachelor\data\video\videoplayback.mp4"
+    # VIDEO_PATH                = r"E:\personalproject\bachelor\data\video\accident_video.mp4"
     VIDEO_PATH              = r"E:\personalproject\bachelor\data\video\highway_traffic.mp4"
     # VIDEO_PATH              = r"E:\personalproject\bachelor\data\video\traffic.mp4"
 
@@ -32,45 +32,45 @@ class Config:
     CONF_YOLO = 0.55
     CONF_ACCIDENT_HIGH = 0.92   # Поріг точного ДТП
     CONF_ACCIDENT_LOW = 0.86    # Поріг попередження
-    HEARTBEAT_RATE = 10         # Як часто перевіряти авто без підозр
-    VIDEO_BUFFER_SECONDS = 2.0  # Буфер до/після аварії
-
-    # ----------------------- BOT-SORT
+    HEARTBEAT_RATE = 30         # Як часто перевіряти авто без підозр # було 10
+    VIDEO_BUFFER_SECONDS = 4.0  # Буфер до/після аварії               # було 2
 
     # ------------------ 4. MOTION LSTM ------------------
-    LSTM_OBS_LEN = 20
-    LSTM_PRED_LEN = 30
-    LSTM_HIDDEN = 128
-    LSTM_LAYERS = 2
-    LSTM_DROPOUT = 0.3
-    LSTM_COORD_SCALE = 10.0
-    LSTM_COLLISION_PX = 80
-    LSTM_COLLISION_FRAMES = 10
-    LSTM_ACCIDENT_THRESH = 0.70
+    LSTM_OBS_LEN            = 20
+    LSTM_PRED_LEN           = 30
+    LSTM_HIDDEN             = 128
+    LSTM_LAYERS             = 2
+    LSTM_DROPOUT            = 0.3
+    LSTM_COORD_SCALE        = 10.0
+    LSTM_COLLISION_PX       = 80
+    LSTM_COLLISION_FRAMES   = 10
+    LSTM_ACCIDENT_THRESH    = 0.70
 
     # ------------------ 5. TRAFFIC ANALYZER ------------------
-    ANALYZER_MAX_HISTORY = 25
-    ANALYZER_COLLISION_DIST = 80
-    COLLISION_TTC_THRESHOLD = 1.5
-    SUDDEN_STOP_THRESHOLD = 0.19
-    MIN_SPEED_FOR_STOP = 5.0
+    ANALYZER_MAX_HISTORY        = 25
+    ANALYZER_COLLISION_DIST     = 80
+    COLLISION_TTC_THRESHOLD     = 1.5
+    # Кінематичні пороги (фінальні, без дублювань)
+    SUDDEN_STOP_THRESHOLD       = 0.35
+    MIN_SPEED_FOR_STOP          = 6.0
 
 
-    # ------------------ 6. ANALYZER ------------------
-    _DEFAULT_MIN_COSINE_CONVERGENCE   = 0.15   # нижче → ігноруємо як розбіжну пару
-    _DEFAULT_SAME_DIRECTION_THRESHOLD = 0.85   # вище → попутні авто, не ризик
-    _DEFAULT_MIN_RELATIVE_SPEED       = 0.8    # пікс/кадр; нижче → не рахуємо TTC
-    _DEFAULT_TTC_EMA_ALPHA            = 0.40   # вага нового значення в EMA
-    _DEFAULT_DENSITY_RADIUS           = 220    # пікс для підрахунку сусідів
-    _DEFAULT_DENSITY_DIVISOR          = 0.25   # знижує поріг при щільному русі
-    _DEFAULT_COMPOSITE_RISK_MIN       = 0.35   # мінімальний composite score
+    # ------------------ 6. ANALYZER (кінематика) ------------------
+    # Рекомендовані значення для мінімізації false-positives
+    _DEFAULT_MIN_COSINE_CONVERGENCE   = 0.22   # нижче → ігноруємо як розбіжну пару
+    _DEFAULT_SAME_DIRECTION_THRESHOLD = 0.82   # вище → попутні авто, не ризик
+    _DEFAULT_MIN_RELATIVE_SPEED       = 1.2    # пікс/кадр; нижче → не рахуємо TTC
+    _DEFAULT_TTC_EMA_ALPHA            = 0.35   # вага нового значення в EMA
+    _DEFAULT_DENSITY_RADIUS           = 200    # пікс для підрахунку сусідів
+    _DEFAULT_DENSITY_DIVISOR          = 0.30   # знижує поріг при щільному русі
+    _DEFAULT_COMPOSITE_RISK_MIN       = 0.48   # трохи суворіший поріг ризику
     _DEFAULT_COMPOSITE_WEIGHTS        = (0.50, 0.30, 0.20)  # (ttc, cos, dist)
 
 
-    # ------------------ 6. ANALYZER ------------------
+    # ------------------ 7. ACCIDENT STATE ------------------
     ACCIDENT_LIFETIME = 90 # 3 сек при 30 FPS
 
-    # ------------------ 6. REGION OF INTEREST (ROI) ------------------
+    # ------------------ 8. REGION OF INTEREST (ROI) ------------------
     # Область для відео із шосе
     ROI_POLYGON_HIGHWAY = np.array([
         (931, 1074), 

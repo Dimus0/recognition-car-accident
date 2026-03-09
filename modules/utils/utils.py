@@ -41,11 +41,12 @@ def load_models(DEVICE,CNN_WEIGHTS_PATH,YOLO_MODEL_PATH):
         n_init=4,                # ЗБІЛЬШЕНО: Об'єкт має бути впевнено знайдений 4 кадри поспіль, щоб відсіяти "фантоми"
         max_iou_distance=0.7,    # Залишаємо стандарт
         max_cosine_distance=0.3, # Залишаємо (відповідає за порівняння візуальної схожості)
-        nn_budget=20,            # Залишаємо (скільки попередніх кадрів авто пам'ятає мережа)
+        nn_budget=30,            # Залишаємо (скільки попередніх кадрів авто пам'ятає мережа)
         embedder="mobilenet",    # ДОДАНО (Опціонально): Вказує DeepSort використовувати легку нейромережу для розрізнення машин за виглядом
         half=True                # ДОДАНО: Прискорює роботу на GPU
     )
-
+    
+    logger.info("Моделі YOLO та СNN завантажилися")
     return cnn, yolo,deepsort
 
 def process_cnn_batch(crops,cnn_transforms,cnn_model):

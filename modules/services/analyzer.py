@@ -63,8 +63,8 @@ class TrafficAnalyzer:
         collision_distance: int = 80,
         min_motion: int = 3,
         collision_ttc_threshold: float = 1.5,
-        sudden_stop_threshold: float = 0.3,
-        min_speed_for_stop: float = 5.0,
+        sudden_stop_threshold: float = Config.SUDDEN_STOP_THRESHOLD,
+        min_speed_for_stop: float = Config.MIN_SPEED_FOR_STOP,
         # ── Просунуті фільтри щільного трафіку ──────────────────────────────
         min_cosine_convergence:   float = Config._DEFAULT_MIN_COSINE_CONVERGENCE,
         same_direction_threshold: float = Config._DEFAULT_SAME_DIRECTION_THRESHOLD,
@@ -363,13 +363,6 @@ class TrafficAnalyzer:
                 # cosine_approach_angle (utils.py) -- кут зближення у градусах.
                 # 0 = лоб-в-лоб, 90 = косий удар. Тільки для логування / налагодження.
                 _angle = cosine_approach_angle(vel_a, vel_b, pos_a, pos_b)
-
-        # ── Доповнюємо через LSTM прогнози ───────────────────────────────────
-        # Стандартний TTC базується на поточних швидкостях (лінійна екстраполяція).
-        # LSTM передбачає нелінійні траєкторії — ловить маневри яких TTC не бачить.
-        if self._lstm_predicted:
-            lstm_extra = self._predict_collision_lstm(ids, boxes, centers, risky)
-            risky = risky | lstm_extra
 
         return risky
 

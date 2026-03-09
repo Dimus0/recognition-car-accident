@@ -4,8 +4,10 @@ import json
 from dotenv import load_dotenv
 import threading
 import time
+import logging
 
 load_dotenv()
+logger = logging.getLogger("accident_detector")
 
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 CHAT_ID = os.getenv('CHAT_ID')
@@ -105,18 +107,39 @@ def schedule_notification(
         if video_path:
             waited = 0.0
             while waited < poll_timeout:
-                if os.path.exists(video_path) and os.path.getsize(video_path) > 0:
-                    print(f"Відео готове після {waited + delay_sec:.1f}с: {video_path}")
-                    break
+                try:
+                    if os.path.exists(video_path) and os.path.getsize(video_path) > 1024:
+                        logger.info(f"[TELEGRAM BOT]Відео готове ({waited + delay_sec:.1f}с): {video_path}")
+                        break
+                except OSError:
+                    pass
                 time.sleep(poll_interval)
                 waited += poll_interval
             else:
-                print(f"Відео не з'явилось за {poll_timeout}с, надсилаємо без відео.")
+                logger.info(f"[TELEGRAM BOT] Відео не з'явилось за {poll_timeout}с → відправляємо тільки фото")
 
         notification_telegram_bot(photo_path, video_path, description)
 
-    t = threading.Thread(target=_send, daemon=True, name="tg-notify")
+    t = threading.Thread(target=_send, daemon=False, name="tg-notify")
     t.start()
     total_max = delay_sec + poll_timeout
-    print(f"Сповіщення заплановано (polling, max {total_max:.0f}с)...")
+    logger.info(f" [TELEGRAM BOT] Сповіщення заплановано (polling max={total_max:.0f}с) | відео: {video_path!r}")
     return t
+
+def wait_for_notifications(threads: list, timeout: float = 180.0):
+    if not threads:
+        return
+
+    logger.info(f"[TELEGRAM BOT] Очікуємо відправку {len(threads)} сповіщень (max {timeout:.0f}с)...")
+
+    for t in threads:
+        if not isinstance(t, threading.Thread):
+            logger.info(f"[TG] Пропущено об'єкт {t} (не Thread)")
+            continue
+
+        t.join(timeout=timeout)
+
+        if t.is_alive():
+            logger.info(f"[TELEGRAM BOT] Потік {t.name} не завершився за {timeout}с — пропускаємо")
+
+    logger.info("[TELEGRAM BOT] Всі сповіщення відправлено.")

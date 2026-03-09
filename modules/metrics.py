@@ -828,8 +828,8 @@ class MetricsTracker:
         """Генерує і зберігає всі графіки у output_dir."""
         os.makedirs(output_dir, exist_ok=True)
 
-        DARK_BG   = "#0d1117"
-        PANEL_BG  = "#161b22"
+        DARK_BG   = "#000000"
+        PANEL_BG  = "#000000"
         GRID_CLR  = "#21262d"
         TEXT_CLR  = "#c9d1d9"
         BLUE      = "#58a6ff"
