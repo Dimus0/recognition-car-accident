@@ -86,7 +86,7 @@ class AccidentClassifier:
 
         total     = sum(p.numel() for p in backbone.parameters())
         trainable = sum(p.numel() for p in backbone.parameters() if p.requires_grad)
-        print(f'Параметрів: {total:,}  (trainable: {trainable:,})')
+        # print(f'Параметрів: {total:,}  (trainable: {trainable:,})')
 
         return cls(backbone, class_names, device)
 
@@ -124,11 +124,11 @@ class AccidentClassifier:
 
         obj = cls(backbone, class_names, device)
         obj.model.eval()
-        print(f'✅ Модель завантажена: {path}')
-        print(f'   Класи  : {class_names}')
-        print(f'   Device : {device}')
-        if 'best_val_acc' in checkpoint:
-            print(f'   Val Acc: {checkpoint["best_val_acc"]:.4f}')
+        # print(f'✅ Модель завантажена: {path}')
+        # print(f'   Класи  : {class_names}')
+        # print(f'   Device : {device}')
+        # if 'best_val_acc' in checkpoint:
+        #     print(f'   Val Acc: {checkpoint["best_val_acc"]:.4f}')
         return obj
 
     # ── Збереження ────────────────────────────────────────────────────
@@ -470,5 +470,3 @@ class AccidentClassifier:
         plt.savefig(os.path.join(save_dir, 'confusion_matrix.png'), dpi=150)
         plt.show(); plt.close()
 
-
-print('✅ Клас AccidentClassifier визначено')

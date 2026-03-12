@@ -59,6 +59,10 @@ if os.path.exists(Config.OUTPUT_DIR_CLIP):
 os.makedirs(Config.OUTPUT_DIR_CLIP,exist_ok=True)
 os.makedirs(Config.ARTIFACTS_PATH,exist_ok=True)
 
+if os.path.exists(Config.RESNET_CROPS_DIR):
+    shutil.rmtree(Config.RESNET_CROPS_DIR)
+os.makedirs(Config.RESNET_CROPS_DIR,exist_ok=True)
+
 log_file = os.path.join(Config.LOG_DIR, "accident_detection.log")
 if os.path.exists(log_file):
     os.remove(log_file)
@@ -282,7 +286,13 @@ def accident_detection(input_video):
             )
 
             if should_run:
-                crop = frame[y1:y2, x1:x2]
+                h_frame, w_frame = frame.shape[:2]
+                pad = Config.CNN_CONTEXT_PADDING
+                cx1 = max(0, x1 - pad)
+                cy1 = max(0, y1 - pad)
+                cx2 = min(w_frame, x2 + pad)
+                cy2 = min(h_frame, y2 + pad)
+                crop = frame[cy1:cy2, cx1:cx2]
                 if crop.size > 0:
                     crops_to_process.append(crop)
                     ids_to_process.append(tid)
@@ -295,16 +305,26 @@ def accident_detection(input_video):
         # 6. CNN Inference
         cnn_start = cv2.getTickCount()
         if crops_to_process:
-            scores = process_cnn_batch(crops_to_process, transform, cnn_model)
+            scores = process_cnn_batch(crops_to_process, cnn_model)
             cnn_time = ((cv2.getTickCount() - cnn_start) / cv2.getTickFrequency()) * 1000
             
             metrics_tracker.update_cnn_metrics(len(crops_to_process), cnn_time, scores)
             
-            for (x1, y1, x2, y2), score, tid in zip(box_map_for_cnn, scores, ids_to_process):
+            for (x1, y1, x2, y2), score, tid,crop_img in zip(box_map_for_cnn, scores, ids_to_process,crops_to_process):
                 # lstm
                 lstm_risk = lstm_risk_scores.get(tid,0.0)
                 lstm_boost = (lstm_risk ** 2) * 0.25 * score
                 eff_score = min(1.0, score + lstm_boost)
+
+                if score >= Config.CNN_SAVE_CROP_THRESH:
+                    from datetime import datetime as _dt
+                    _ts = _dt.now().strftime("%H%M%S_%f")
+                    _crop_name = f"f{frame_count:06d}_id{tid}_s{score:.3f}_{_ts}.jpg"
+                    _crop_path = os.path.join(Config.RESNET_CROPS_DIR, _crop_name)
+                    try:
+                        cv2.imwrite(_crop_path, crop_img)
+                    except Exception as _e:
+                        logger.warning(f"[CROP SAVE] Помилка: {_e}")
 
                 accident_state.update_score(tid, eff_score, frame_count)
                 is_already_confirmed = accident_state.is_confirmed_accident(tid)
@@ -337,7 +357,7 @@ def accident_detection(input_video):
                     logger.info(f"[FRAME {frame_count}] CONFIRMED ACCIDENT | ID={tid} | SCORE={score:.2f}")
                     logger.info(
                         "[FRAME %d] ✅ CONFIRMED ACCIDENT | "
-                        "ID=%d | cnn_score=%.4f | eff_score=%.4f | "
+                        "ID=%s | cnn_score=%.4f | eff_score=%.4f | "
                         "lstm_risk=%.4f | lstm_boost=%.4f | "
                         "kinematic=%s | lstm_flag=%s | sudden_stop=%s",
                         frame_count, tid,
@@ -372,7 +392,7 @@ def accident_detection(input_video):
                     logger.warning(f"[FRAME {frame_count}] NEW ACCIDENT | ID={tid} | SCORE={score:.2f}")
                     logger.warning(
                         "[FRAME %d] 🚨 NEW ACCIDENT DETECTED | "
-                        "ID=%d | cnn_score=%.4f | eff_score=%.4f | "
+                        "ID=%s | cnn_score=%.4f | eff_score=%.4f | "
                         "lstm_risk=%.4f | lstm_boost=%.4f | "
                         "kinematic=%s | lstm_flag=%s | sudden_stop=%s | "
                         "bbox=(%d,%d,%d,%d) | threshold=%.2f",
@@ -408,7 +428,7 @@ def accident_detection(input_video):
 
                     logger.info(
                         "[FRAME %d] ⚠️  WARNING | "
-                        "ID=%d | cnn_score=%.4f | eff_score=%.4f | "
+                        "ID=%s | cnn_score=%.4f | eff_score=%.4f | "
                         "lstm_risk=%.4f | kinematic=%s | lstm_flag=%s | sudden_stop=%s",
                         frame_count, tid,
                         score, eff_score,
@@ -460,13 +480,7 @@ def accident_detection(input_video):
                     accident_objects=accident_objects,
                     video_path=input_video
                 )
-                # video_buffer.trigger(frame_count)
-                # saved_path = accident_capture.save_accident_frame(
-                #     frame=frame,
-                #     frame_number=frame_count,
-                #     accident_objects=accident_objects,
-                #     video_path=input_video
-                # )
+            
                 accident_video_path = video_buffer.trigger(frame_count)
 
                 accident_description = build_accident_description(

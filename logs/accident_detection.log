@@ -1,20 +1,21 @@
-2026-03-12 12:12:05,034 - INFO - AccidentClassifier завантажено | класи=['Accident', 'Non Accident'] | device=cpu
-2026-03-12 12:12:11,590 - INFO - MobileNetV2 Embedder for Deep Sort initialised
-2026-03-12 12:12:11,591 - INFO - - gpu enabled: False
-2026-03-12 12:12:11,591 - INFO - - half precision: False
-2026-03-12 12:12:11,592 - INFO - - max batch size: 16
-2026-03-12 12:12:11,592 - INFO - - expects BGR: True
-2026-03-12 12:12:13,589 - INFO - DeepSort Tracker initialised
-2026-03-12 12:12:13,590 - INFO - - max age: 45
-2026-03-12 12:12:13,590 - INFO - - appearance threshold: 0.3
-2026-03-12 12:12:13,590 - INFO - - nms threshold: OFF
-2026-03-12 12:12:13,590 - INFO - - max num of appearance features: 30
-2026-03-12 12:12:13,591 - INFO - - overriding track class : No
-2026-03-12 12:12:13,591 - INFO - - today given : No
-2026-03-12 12:12:13,591 - INFO - - in-build embedder : Yes
-2026-03-12 12:12:13,591 - INFO - - polygon detections : No
-2026-03-12 12:12:13,591 - INFO - Моделі YOLO та СNN завантажилися
-2026-03-12 12:12:13,591 - INFO - Класифікатор завантажено | класи=['Accident', 'Non Accident'] | device=cpu
-2026-03-12 12:12:14,203 - INFO - [LSTM] MotionLSTM завантажено | obs=20 pred=30
-2026-03-12 12:12:14,208 - INFO - Models loaded successfully. MotionLSTM: ON
-2026-03-12 12:12:16,360 - INFO - Starting processing: 346 frames | LSTM: ON
+2026-03-12 13:38:53,160 - INFO - AccidentClassifier завантажено | класи=['Accident', 'Non Accident'] | device=cpu
+2026-03-12 13:38:57,519 - INFO - MobileNetV2 Embedder for Deep Sort initialised
+2026-03-12 13:38:57,520 - INFO - - gpu enabled: False
+2026-03-12 13:38:57,521 - INFO - - half precision: False
+2026-03-12 13:38:57,521 - INFO - - max batch size: 16
+2026-03-12 13:38:57,521 - INFO - - expects BGR: True
+2026-03-12 13:38:59,782 - INFO - DeepSort Tracker initialised
+2026-03-12 13:38:59,783 - INFO - - max age: 45
+2026-03-12 13:38:59,783 - INFO - - appearance threshold: 0.3
+2026-03-12 13:38:59,783 - INFO - - nms threshold: OFF
+2026-03-12 13:38:59,783 - INFO - - max num of appearance features: 30
+2026-03-12 13:38:59,784 - INFO - - overriding track class : No
+2026-03-12 13:38:59,784 - INFO - - today given : No
+2026-03-12 13:38:59,784 - INFO - - in-build embedder : Yes
+2026-03-12 13:38:59,785 - INFO - - polygon detections : No
+2026-03-12 13:38:59,785 - INFO - Моделі YOLO та СNN завантажилися
+2026-03-12 13:38:59,785 - INFO - Класифікатор завантажено | класи=['Accident', 'Non Accident'] | device=cpu
+2026-03-12 13:39:00,336 - INFO - [LSTM] MotionLSTM завантажено | obs=20 pred=30
+2026-03-12 13:39:00,340 - INFO - Models loaded successfully. MotionLSTM: ON
+2026-03-12 13:39:01,207 - INFO - Starting processing: 1625 frames | LSTM: ON
+2026-03-12 14:17:06,796 - INFO - Processing finished. Output: E:\personalproject\bachelor\logs\fragments\result.mp4

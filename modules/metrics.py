@@ -9,21 +9,14 @@ from datetime import datetime
 from collections import defaultdict, deque
 from typing import Dict, List, Tuple, Optional
 import matplotlib
-matplotlib.use("Agg")   # без GUI (для серверного запуску)
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.patches import Patch
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score
 
 
-# ================================================================
-#  MetricsTracker
-# ================================================================
-
 class MetricsTracker:
-
-    # BUG FIX: додано параметр auto_generate_gt (раніше його не було,
-    #          але console.py його передавав → TypeError)
     def __init__(self, ground_truth_path: Optional[str] = None,
                  auto_generate_gt: bool = False):
         self.ground_truth_path = ground_truth_path
@@ -32,9 +25,8 @@ class MetricsTracker:
         self.reset()
 
     # ----------------------------------------------------------
-    #  Ground Truth helpers
+    #  Ground Truth
     # ----------------------------------------------------------
-
     def add_ground_truth_frame(self, frame_num: int, vehicles: list,
                                bboxes: list, accident: bool):
         if self.ground_truth is None:
@@ -51,7 +43,7 @@ class MetricsTracker:
 
     def _load_ground_truth(self) -> Optional[Dict]:
         if not os.path.exists(self.ground_truth_path):
-            print(f"⚠️ Ground truth не знайдено: {self.ground_truth_path} -> Відбувається створення...")
+            print(f"Ground truth не знайдено: {self.ground_truth_path} -> Відбувається створення...")
             empty_gt = {
                 "meta": {"note": "Auto-generated empty Ground Truth"},
                 "frame_annotations": {}
@@ -70,7 +62,7 @@ class MetricsTracker:
                     return None
                 return data
             except json.JSONDecodeError:
-                print("⚠️ Ground truth некоректний JSON, пропускаю")
+                print("Ground truth некоректний JSON, пропускаю")
                 return None
 
     # ----------------------------------------------------------

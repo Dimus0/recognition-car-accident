@@ -16,8 +16,8 @@ class Config:
     GROUND_TRUTH_PATH = os.path.join(LOG_DIR, "ground_truth.json")
 
 
-    VIDEO_PATH                = r"E:\personalproject\bachelor\data\video\accident_video.mp4"
-    # VIDEO_PATH              = r"E:\personalproject\bachelor\data\video\highway_traffic.mp4"
+    # VIDEO_PATH                = r"E:\personalproject\bachelor\data\video\accident_video.mp4"
+    VIDEO_PATH              = r"E:\personalproject\bachelor\data\video\highway_traffic.mp4"
     # VIDEO_PATH              = r"E:\personalproject\bachelor\data\video\traffic.mp4"
 
     # ------------------ 2. MODELS ------------------
@@ -30,11 +30,11 @@ class Config:
     LSTM_MODEL_PATH = os.path.join(BASE_DIR, "model", "weights", "accident_lstm_model.pt")
     LSTM_SCALER_PATH = os.path.join(BASE_DIR, "model", "weights", "motion_lstm_scaler.pkl")
     # ------------------ 3. DETECTION & CNN ------------------
-    CONF_YOLO = 0.55
-    CONF_ACCIDENT_HIGH = 0.92   # Поріг точного ДТП
-    CONF_ACCIDENT_LOW = 0.86    # Поріг попередження
-    HEARTBEAT_RATE = 30         # Як часто перевіряти авто без підозр # було 10
-    VIDEO_BUFFER_SECONDS = 4.0  # Буфер до/після аварії               # було 2
+    CONF_YOLO               = 0.6
+    CONF_ACCIDENT_HIGH      = 0.92   # Поріг точного ДТП
+    CONF_ACCIDENT_LOW       = 0.88    # Поріг попередження
+    HEARTBEAT_RATE          = 30         # Як часто перевіряти авто без підозр # було 10
+    VIDEO_BUFFER_SECONDS    = 4.0  # Буфер до/після аварії               # було 2
 
     # ------------------ 4. MOTION LSTM ------------------
     LSTM_OBS_LEN            = 20
@@ -47,6 +47,14 @@ class Config:
     LSTM_COLLISION_FRAMES   = 10
     LSTM_ACCIDENT_THRESH    = 0.70
 
+    # --------------------- ResNet50 ------------------
+
+    RESNET50_NUM_CLASSES  = 2
+    RESNET50_DROPOUT      = 0.4
+    RESNET50_ACCIDENT_IDX = 0
+    CNN_CONTEXT_PADDING = 120
+    CNN_SAVE_CROP_THRESH = 0.80
+    RESNET_CROPS_DIR     = os.path.join(LOG_DIR, "resnet_crops")
     # ------------------ 5. TRAFFIC ANALYZER ------------------
     ANALYZER_MAX_HISTORY        = 25
     ANALYZER_COLLISION_DIST     = 80
