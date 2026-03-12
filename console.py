@@ -74,15 +74,21 @@ logger = logging.getLogger("accident_detector")
 
 # ---------------------- INIT ----------------------
 
-cnn_model, yolo_model,deepsort = load_models(
+cnn_model,yolo_model,deepsort = load_models(
     Config.DEVICE, 
-    Config.CNN_WEIGHTS_PATH, 
+    Config.CLASSIFIER_WEIGHTS_PATH, 
     Config.YOLO_MODEL_PATH
 )
+
+logger.info(
+    "Класифікатор завантажено | класи=%s | device=%s",
+    cnn_model.class_names, Config.DEVICE
+)
+
 motion_lstm = load_motion_lstm(Config.LSTM_MODEL_PATH, Config.LSTM_SCALER_PATH, Config.DEVICE)
 logger.info(f"Models loaded successfully. MotionLSTM: {'ON' if motion_lstm else 'OFF'}")
 
-cnn_transforms = transforms.Compose([
+transform = transforms.Compose([
     transforms.ToPILImage(),
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -143,7 +149,7 @@ def accident_detection(input_video):
         
         frame_count += 1
 
-        if frame_count % 20 == 0:
+        if frame_count % 100 == 0:
             progress = (frame_count / total_frames) * 100
             print(f"Progress: {progress:.1f}% ({frame_count}/{total_frames})")
 
@@ -289,7 +295,7 @@ def accident_detection(input_video):
         # 6. CNN Inference
         cnn_start = cv2.getTickCount()
         if crops_to_process:
-            scores = process_cnn_batch(crops_to_process, cnn_transforms, cnn_model)
+            scores = process_cnn_batch(crops_to_process, transform, cnn_model)
             cnn_time = ((cv2.getTickCount() - cnn_start) / cv2.getTickFrequency()) * 1000
             
             metrics_tracker.update_cnn_metrics(len(crops_to_process), cnn_time, scores)
@@ -304,7 +310,10 @@ def accident_detection(input_video):
                 is_already_confirmed = accident_state.is_confirmed_accident(tid)
 
                 should_confirm = accident_state.should_confirm_accident(tid, eff_score,lstm_risk=lstm_risk)
-                
+                is_kinematic = tid in collision_risky_ids_kin
+                is_lstm_flag = tid in lstm_high_risk_ids or tid in lstm_risk_ids
+                is_sudden    = sudden_stop_cache.get(tid, False)
+
                 if is_already_confirmed:
                     label = f"ACCIDENT {eff_score:.2f}"
                     color = (0, 0, 255)
@@ -326,7 +335,16 @@ def accident_detection(input_video):
                     )
                     
                     logger.info(f"[FRAME {frame_count}] CONFIRMED ACCIDENT | ID={tid} | SCORE={score:.2f}")
-                
+                    logger.info(
+                        "[FRAME %d] ✅ CONFIRMED ACCIDENT | "
+                        "ID=%d | cnn_score=%.4f | eff_score=%.4f | "
+                        "lstm_risk=%.4f | lstm_boost=%.4f | "
+                        "kinematic=%s | lstm_flag=%s | sudden_stop=%s",
+                        frame_count, tid,
+                        score, eff_score,
+                        lstm_risk, lstm_boost,
+                        is_kinematic, is_lstm_flag, is_sudden,
+                    )
                 elif should_confirm and eff_score > Config.CONF_ACCIDENT_HIGH:
                     accident_state.confirm_accident(tid, frame_count)
                     
@@ -352,7 +370,20 @@ def accident_detection(input_video):
                     )
                     
                     logger.warning(f"[FRAME {frame_count}] NEW ACCIDENT | ID={tid} | SCORE={score:.2f}")
-                
+                    logger.warning(
+                        "[FRAME %d] 🚨 NEW ACCIDENT DETECTED | "
+                        "ID=%d | cnn_score=%.4f | eff_score=%.4f | "
+                        "lstm_risk=%.4f | lstm_boost=%.4f | "
+                        "kinematic=%s | lstm_flag=%s | sudden_stop=%s | "
+                        "bbox=(%d,%d,%d,%d) | threshold=%.2f",
+                        frame_count, tid,
+                        score, eff_score,
+                        lstm_risk, lstm_boost,
+                        is_kinematic, is_lstm_flag, is_sudden,
+                        x1, y1, x2, y2,
+                        Config.CONF_ACCIDENT_HIGH,
+                    )
+
                 elif tid in collision_risky_ids_total and eff_score > Config.CONF_ACCIDENT_LOW:
                     label = f"WARNING {eff_score:.2f}"
                     color = (0, 255, 255)
@@ -375,20 +406,17 @@ def accident_detection(input_video):
                             severity='medium'
                         )
 
-                    # Детальний лог причини попередження
-                    is_kinematic = tid in collision_risky_ids_kin
-                    is_lstm_flag = tid in lstm_high_risk_ids or tid in lstm_risk_ids
-                    is_sudden    = sudden_stop_cache.get(tid, False)
                     logger.info(
-                        "[FRAME %d] WARNING | ID=%d | SCORE=%.2f | "
-                        "kinematic=%s lstm=%s sudden_stop=%s",
-                        frame_count,
-                        tid,
-                        eff_score,
-                        is_kinematic,
-                        is_lstm_flag,
-                        is_sudden,
+                        "[FRAME %d] ⚠️  WARNING | "
+                        "ID=%d | cnn_score=%.4f | eff_score=%.4f | "
+                        "lstm_risk=%.4f | kinematic=%s | lstm_flag=%s | sudden_stop=%s",
+                        frame_count, tid,
+                        score, eff_score,
+                        lstm_risk,
+                        is_kinematic, is_lstm_flag, is_sudden,
                     )
+
+                    # Детальний лог причини попередження
                 
                 else:
                     if tid in lstm_risk_ids:
@@ -457,26 +485,44 @@ def accident_detection(input_video):
                     f"Severity: {accident_description['severity']} | "
                     f"Photo: {accident_photo_path} | Video: {accident_video_path}"
                 )
+                logger.critical(
+                    "[ACCIDENT SAVED] Frame=%d | "
+                    "Vehicles=%d (primary=%d secondary=%d) | "
+                    "Severity=%s | max_conf=%.4f | avg_conf=%.4f | "
+                    "timestamp=%s | Photo=%s | Video=%s",
+                    frame_count,
+                    accident_description['vehicles_total'],
+                    accident_description['vehicles_primary'],
+                    accident_description['vehicles_secondary'],
+                    accident_description['severity'],
+                    accident_description['max_confidence'],
+                    accident_description['avg_confidence'],
+                    accident_description['timestamp_formatted'],
+                    accident_photo_path,
+                    accident_video_path,
+                )
+
                 new_ids = {
                     obj['track_id']
                     for obj in accident_objects
                     if obj['type'] == 'primary' and obj['track_id'] not in notified_accidents
                 }
 
-                    if new_ids:
-                        notified_accidents.update(new_ids)
-                        # video_path вже відомий (trigger повертає майбутній шлях),
-                        # затримка потрібна щоб файл встиг записатись
-                        post_delay = 4.0 if accident_video_path is None else 4.0
-                        t = schedule_notification(
-                            photo_path=accident_photo_path,
-                            video_path=accident_video_path,
-                            description=accident_description,
-                            delay_sec=post_delay,
-                            poll_timeout=180.0,
-                        )
-                        notification_threads.append(t)
-                        logger.info(f"[NOTIFICATION SCHEDULED] IDs={new_ids} delay={post_delay}s")
+                if new_ids:
+                    notified_accidents.update(new_ids)
+                    # video_path вже відомий (trigger повертає майбутній шлях),
+                    # затримка потрібна щоб файл встиг записатись
+                    post_delay = 4.0 if accident_video_path is None else 4.0
+                    t = schedule_notification(
+                        photo_path=accident_photo_path,
+                        video_path=accident_video_path,
+                        description=accident_description,
+                        delay_sec=post_delay,
+                        poll_timeout=240.0,
+                    )
+                    notification_threads.append(t)
+                    logger.info(f"[NOTIFICATION SCHEDULED] IDs={new_ids} delay={post_delay}s")
+        
         collision_warnings = len(collision_risky_ids_total)
         sudden_stops = sum(1 for tid in ids if sudden_stop_cache.get(tid, False))
         

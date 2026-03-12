@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import torch
 from model.src.cnn import ImproveAccidentCNN
+from model.src.resnet50 import AccidentClassifier
 from ultralytics import YOLO
 from deep_sort_realtime.deepsort_tracker import DeepSort
 from collections import deque, defaultdict
@@ -12,6 +13,7 @@ import pickle
 import logging
 import os
 from typing import Tuple, Optional
+from PIL import Image
 
 logger = logging.getLogger("accident_detector")
 
@@ -28,10 +30,17 @@ def compute_iou(boxA, boxB):
 
     return inter / (areaA + areaB - inter + 1e-6)
 
-def load_models(DEVICE,CNN_WEIGHTS_PATH,YOLO_MODEL_PATH):
-    cnn = ImproveAccidentCNN().to(DEVICE)
-    cnn.load_state_dict(torch.load(CNN_WEIGHTS_PATH, map_location=DEVICE))
-    cnn.eval()
+def load_models(DEVICE,CLASSIFIER_WEIGHTS_PATH,YOLO_MODEL_PATH):
+
+    clf = AccidentClassifier.load(CLASSIFIER_WEIGHTS_PATH,device=DEVICE)
+    logger.info(
+        "AccidentClassifier завантажено | класи=%s | device=%s",
+        clf.class_names, DEVICE
+    )
+
+    # cnn = ImproveAccidentCNN().to(DEVICE)
+    # cnn.load_state_dict(torch.load(CNN_WEIGHTS_PATH, map_location=DEVICE))
+    # cnn.eval()
 
     yolo = YOLO(YOLO_MODEL_PATH)
     yolo.to(DEVICE)
@@ -47,27 +56,67 @@ def load_models(DEVICE,CNN_WEIGHTS_PATH,YOLO_MODEL_PATH):
     )
     
     logger.info("Моделі YOLO та СNN завантажилися")
-    return cnn, yolo,deepsort
+    return clf,yolo,deepsort
 
-def process_cnn_batch(crops,cnn_transforms,cnn_model):
+# def process_cnn_batch(crops,cnn_transforms,cnn_model):
+#     if not crops:
+#         return []
+#     tensors = []
+#     for crop in crops:
+#         try:
+#             rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+#             t = cnn_transforms(rgb)
+#             tensors.append(t)
+#         except:
+#             tensors.append(torch.zeros(3, 224, 224))
+#     batch = torch.stack(tensors).to(Config.DEVICE)
+#     with torch.no_grad():
+#         out = cnn_model(batch)
+#         if out.shape[1] == 1:
+#             return torch.sigmoid(out).cpu().numpy().flatten().tolist()
+#         else:
+#             return torch.softmax(out, dim=1)[:, 1].cpu().numpy().tolist()
+
+def process_cnn_batch(crops: list, cnn_model: AccidentClassifier) -> list:
+    """
+    Батчевий інференс AccidentClassifier на кропах з відеокадру.
+
+    Parameters
+    ----------
+    crops     : list[np.ndarray] — BGR-кропи від OpenCV
+    cnn_model : AccidentClassifier — завантажена модель
+
+    Returns
+    -------
+    list[float] — ймовірність класу 'Accident' для кожного кропу [0..1]
+    """
     if not crops:
         return []
+
+    # Знаходимо індекс класу 'Accident' один раз
+    acc_idx = 0
+    for i, name in enumerate(cnn_model.class_names):
+        if 'accident' in name.lower() and 'non' not in name.lower():
+            acc_idx = i
+            break
+
     tensors = []
     for crop in crops:
         try:
-            rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
-            t = cnn_transforms(rgb)
-            tensors.append(t)
-        except:
+            # BGR → RGB → PIL → transform (використовуємо transform моделі)
+            pil = Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB))
+            tensors.append(cnn_model._INFERENCE_TRANSFORM(pil))
+        except Exception:
             tensors.append(torch.zeros(3, 224, 224))
-    batch = torch.stack(tensors).to(Config.DEVICE)
+
+    batch = torch.stack(tensors).to(cnn_model.device)
+
+    cnn_model.model.eval()
     with torch.no_grad():
-        out = cnn_model(batch)
-        if out.shape[1] == 1:
-            return torch.sigmoid(out).cpu().numpy().flatten().tolist()
-        else:
-            return torch.softmax(out, dim=1)[:, 1].cpu().numpy().tolist()
-        
+        probs = torch.softmax(cnn_model.model(batch), dim=1)
+
+    # Повертаємо ймовірність класу 'Accident' для кожного кропу
+    return probs[:, acc_idx].cpu().numpy().tolist()        
 
 def is_inside_roi(bbox, polygon):
     x1, y1, x2, y2 = bbox

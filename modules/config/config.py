@@ -16,18 +16,19 @@ class Config:
     GROUND_TRUTH_PATH = os.path.join(LOG_DIR, "ground_truth.json")
 
 
-    # VIDEO_PATH                = r"E:\personalproject\bachelor\data\video\accident_video.mp4"
-    VIDEO_PATH              = r"E:\personalproject\bachelor\data\video\highway_traffic.mp4"
+    VIDEO_PATH                = r"E:\personalproject\bachelor\data\video\accident_video.mp4"
+    # VIDEO_PATH              = r"E:\personalproject\bachelor\data\video\highway_traffic.mp4"
     # VIDEO_PATH              = r"E:\personalproject\bachelor\data\video\traffic.mp4"
 
     # ------------------ 2. MODELS ------------------
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     YOLO_MODEL_PATH = os.path.join(BASE_DIR, "model", "weights", "yolov8-fine-tuning.pt")
-    CNN_WEIGHTS_PATH = os.path.join(BASE_DIR, "model", "weights", "accident_cnn_model.pth")
+    # YOLO_MODEL_PATH = os.path.join(BASE_DIR, "model", "weights", "yolov11.pt")
+    # CNN_WEIGHTS_PATH = os.path.join(BASE_DIR, "model", "weights", "accident_cnn_model.pth")
+    CLASSIFIER_WEIGHTS_PATH = os.path.join(BASE_DIR, "model", "weights", "resnet50_accident.pth")
     LSTM_MODEL_PATH = os.path.join(BASE_DIR, "model", "weights", "accident_lstm_model.pt")
     LSTM_SCALER_PATH = os.path.join(BASE_DIR, "model", "weights", "motion_lstm_scaler.pkl")
-
     # ------------------ 3. DETECTION & CNN ------------------
     CONF_YOLO = 0.55
     CONF_ACCIDENT_HIGH = 0.92   # Поріг точного ДТП
