@@ -5,795 +5,1236 @@ from torchvision import transforms
 import logging
 import os
 import json
+import psutil
 from datetime import datetime
 from collections import defaultdict, deque
 from typing import Dict, List, Tuple, Optional
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from sklearn.metrics import roc_curve, auc, precision_recall_curve
+import matplotlib.gridspec as gridspec
+from matplotlib.patches import Patch
+from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score
 
 
 class MetricsTracker:
-    """
-    Розширений клас для збору та аналізу метрик роботи системи
-    Включає: Precision, Recall, F1, mAP, MOTA, IDF1, ROC-AUC
-    """
-    
-    def __init__(self, ground_truth_path: Optional[str] = None):
-        """
-        Args:
-            ground_truth_path: Шлях до файлу з ground truth анотаціями
-        """
+
+    def __init__(self, ground_truth_path: Optional[str] = None,
+                 auto_generate_gt: bool = False):
         self.ground_truth_path = ground_truth_path
-        self.ground_truth = self._load_ground_truth() if ground_truth_path else None
+        self.auto_generate_gt  = auto_generate_gt
+        self.ground_truth      = self._load_ground_truth() if ground_truth_path else None
         self.reset()
-    
-    def _load_ground_truth(self) -> Dict:
-        """
-        Завантажує ground truth анотації
-        
-        Формат JSON:
-        {
-            "accidents": [
-                {
-                    "frame": 150,
-                    "vehicles": [1, 2, 3],
-                    "bbox": [[x1, y1, x2, y2], ...],
-                    "type": "collision"
-                }
-            ],
-            "frame_annotations": {
-                "150": {
-                    "accident": true,
-                    "vehicles": [1, 2, 3]
-                }
-            }
+
+    # ----------------------------------------------------------
+    #  Ground Truth helpers
+    # ----------------------------------------------------------
+
+    def add_ground_truth_frame(self, frame_num: int, vehicles: list,
+                               bboxes: list, accident: bool):
+        if self.ground_truth is None:
+            self.ground_truth = {"frame_annotations": {}}
+
+        self.ground_truth["frame_annotations"][str(frame_num)] = {
+            "vehicles": vehicles,
+            "bboxes":   bboxes,
+            "accident": accident
         }
-        """
+        if self.ground_truth_path:
+            with open(self.ground_truth_path, "w", encoding="utf-8") as f:
+                json.dump(self.ground_truth, f, indent=2, ensure_ascii=False)
+
+    def _load_ground_truth(self) -> Optional[Dict]:
         if not os.path.exists(self.ground_truth_path):
-            print(f"⚠️ Ground truth файл не знайдено: {self.ground_truth_path}")
+            print(f"⚠️ Ground truth не знайдено: {self.ground_truth_path} -> Відбувається створення...")
+            empty_gt = {
+                "meta": {"note": "Auto-generated empty Ground Truth"},
+                "frame_annotations": {}
+            }
+            with open(self.ground_truth_path, "w", encoding="utf-8") as f:
+                json.dump(empty_gt, f, indent=4, ensure_ascii=False)
             return None
         
-        with open(self.ground_truth_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    
+        if os.path.getsize(self.ground_truth_path) == 0:
+            return None
+        with open(self.ground_truth_path, "r", encoding="utf-8") as f:
+            try:
+                data = json.load(f)
+                # Якщо файл є, але frame_annotations порожній — теж None
+                if not data.get("frame_annotations"):
+                    return None
+                return data
+            except json.JSONDecodeError:
+                print("⚠️ Ground truth некоректний JSON, пропускаю")
+                return None
+
+    # ----------------------------------------------------------
+    #  Reset / Init
+    # ----------------------------------------------------------
+
     def reset(self):
         self.metrics = {
-            'video_info': {},
-            'processing': {
-                'total_frames': 0,
-                'processing_time_seconds': 0,
-                'avg_fps': 0,
-                'frames_with_detections': 0
+            "video_info": {},
+            "processing": {
+                "total_frames":            0,
+                "processing_time_seconds": 0,
+                "avg_fps":                 0,
+                "frames_with_detections":  0,
             },
-            'detection': {
-                'yolo': {
-                    'total_detections': 0,
-                    'avg_confidence': [],
-                    'detections_per_frame': []
+            "detection": {
+                "yolo": {
+                    "total_detections":    0,
+                    "avg_confidence":      [],
+                    "detections_per_frame": [],
                 },
-                'cnn': {
-                    'total_inferences': 0,
-                    'avg_inference_time_ms': [],
-                    'high_confidence_predictions': 0,
-                    'medium_confidence_predictions': 0,
-                    'low_confidence_predictions': 0
-                }
-            },
-            'tracking': {
-                'unique_vehicles': set(),
-                'avg_track_length': [],
-                'max_simultaneous_tracks': 0
-            },
-            'accidents': {
-                'total_accidents_detected': 0,
-                'false_positives_filtered': 0,
-                'collision_warnings': 0,
-                'sudden_stops': 0,
-                'accidents_by_frame': [],
-                'average_vehicles_per_accident': []
-            },
-            'performance': {
-                'roi_processing_ratio': 0,
-                'cnn_skip_ratio': 0,
-                'memory_usage_mb': []
-            },
-            # ===== НОВІ МЕТРИКИ =====
-            'evaluation': {
-                'confusion_matrix': {
-                    'true_positives': 0,
-                    'false_positives': 0,
-                    'true_negatives': 0,
-                    'false_negatives': 0
+                "cnn": {
+                    "total_inferences":              0,
+                    "avg_inference_time_ms":         [],
+                    # Всі інференси (включаючи heartbeat на звичайних кадрах):
+                    "high_confidence_predictions":   0,   # score > 0.9
+                    "medium_confidence_predictions": 0,   # score 0.7-0.9
+                    "low_confidence_predictions":    0,   # score < 0.7
+                    # Тільки інференси що спрацювали НА АВАРІЮ (score > CONF_ACCIDENT_HIGH):
+                    "accident_trigger_inferences":   0,
+                    "scores_history":                [],
                 },
-                'precision': 0.0,
-                'recall': 0.0,
-                'f1_score': 0.0,
-                'accuracy': 0.0,
-                'mAP': 0.0,
-                'mAP_50': 0.0,
-                'mAP_75': 0.0
             },
-            'tracking_evaluation': {
-                'MOTA': 0.0,  # Multiple Object Tracking Accuracy
-                'MOTP': 0.0,  # Multiple Object Tracking Precision
-                'IDF1': 0.0,  # ID F1 Score
-                'mostly_tracked': 0,
-                'mostly_lost': 0,
-                'id_switches': 0,
-                'fragmentations': 0
+            "tracking": {
+                "unique_vehicles":          set(),
+                "avg_track_length":         [],
+                "max_simultaneous_tracks":  0,
+                "tracks_per_frame":         [],   # NEW: для графіку
             },
-            'roc_data': {
-                'fpr': [],  # False Positive Rate
-                'tpr': [],  # True Positive Rate
-                'thresholds': [],
-                'auc': 0.0
+            "accidents": {
+                # unique_incidents — кількість УНІКАЛЬНИХ ДТП-подій (не кадрів!).
+                # total_accidents_detected — тепер алiас до unique_incidents (для сумісності).
+                "unique_incidents":             0,
+                "total_accidents_detected":     0,   # = unique_incidents, оновлюється в finalize
+                "false_positives_filtered":     0,
+                "collision_warnings":           0,
+                "sudden_stops":                 0,
+                "accidents_by_frame":           [],
+                # Тепер: кількість УНІКАЛЬНИХ авто в кожному інциденті (не per-frame):
+                "average_vehicles_per_accident": [],
+                "accident_confidences":         [],
+                "accident_labels":              [],
+                "all_frame_labels":             [],
+                "all_frame_scores":             [],
             },
-            'precision_recall_data': {
-                'precision': [],
-                'recall': [],
-                'thresholds': [],
-                'average_precision': 0.0
-            }
+            "performance": {
+                "roi_processing_ratio": 0.0,
+                "cnn_skip_ratio":       0.0,
+                "memory_usage_mb":      0.0,
+                "frame_times_ms":       [],   # NEW: сирі значення для перцентилів
+            },
+            "evaluation": {
+                "mAP":    0.0,
+                "mAP_50": 0.0,
+                "mAP_75": 0.0,
+                # NEW: метрики класифікації аварій
+                "precision":        0.0,
+                "recall":           0.0,
+                "f1_score":         0.0,
+                "accuracy":         0.0,
+                "false_positive_rate": 0.0,
+                "true_positive_rate":  0.0,
+            },
+            "tracking_evaluation": {
+                "MOTA":           0.0,
+                "MOTP":           0.0,
+                "IDF1":           0.0,
+                "mostly_tracked": 0,
+                "mostly_lost":    0,
+                "id_switches":    0,
+                "fragmentations": 0,
+                "false_positives": 0,
+                "false_negatives": 0,
+            },
+            "roc_data": {
+                "fpr":        [],
+                "tpr":        [],
+                "thresholds": [],
+                "auc":        0.0,
+            },
+            "precision_recall_data": {
+                "precision":         [],
+                "recall":            [],
+                "thresholds":        [],
+                "average_precision": 0.0,
+            },
+            # NEW: LSTM метрики
+            "lstm": {
+                "enabled":                False,
+                "avg_accident_prob":      [],   # середня ймовірність по кадрам
+                "max_accident_prob":      [],   # макс ймовірність в кадрі
+                "high_risk_tracks_count": [],   # к-сть треків >0.7
+                "predictions_timeline":   [],   # (frame, tid, prob)
+            },
+            # NEW: Latency percentiles
+            "latency": {
+                "p50_ms":  0.0,
+                "p90_ms":  0.0,
+                "p95_ms":  0.0,
+                "p99_ms":  0.0,
+                "min_ms":  0.0,
+                "max_ms":  0.0,
+            },
+            # NEW: швидкісні метрики авто
+            "speed_metrics": {
+                "avg_speed_px_per_frame": 0.0,
+                "max_speed_px_per_frame": 0.0,
+                "speed_histogram":        [],
+            },
         }
-        
-        self.start_time = None
+
+        self.start_time  = None
         self.frame_times = deque(maxlen=100)
-        
-        # Для обчислення метрик
-        self.predictions_per_frame = {}  # {frame_num: [predictions]}
-        self.detection_scores = []  # Всі скори детекцій
-        self.detection_labels = []  # Ground truth labels (0/1)
-        
+
+        self._current_frame_max_score: float = 0.0
+
+        # ── Лічильники для ROI / CNN-skip ratio ─────────────────────────────
+        self._roi_frames_count:     int = 0   # кадрів де активно ROI-зона
+        self._cnn_skipped_count:    int = 0   # кадрів де CNN-інференс пропущено
+        # ── Зразки пам'яті (МБ) для усереднення ─────────────────────────────
+        self._memory_samples: list = []
+        self._process = psutil.Process(os.getpid())
+
+        # ── Реєстр інцидентів ────────────────────────────────────────────────
+        # Кожна запис = один реальний ДТП-інцидент (не кадр, не трек).
+        # {incident_id: {start_frame, last_frame, track_ids: set, max_conf, severity}}
+        # Два підтвердження одного треку або сусідніх треків у вікні
+        # INCIDENT_MERGE_FRAMES → один і той самий інцидент.
+        self._incidents: dict = {}          # incident_id → dict
+        self._track_to_incident: dict = {}  # track_id → incident_id
+        self._next_incident_id: int = 0
+        self.INCIDENT_MERGE_FRAMES = 90     # 3 сек при 30fps — вікно злиття
+
         # Для MOTA/IDF1
         self.tracking_data = {
-            'predictions': defaultdict(list),  # {frame: [(id, bbox, conf)]}
-            'ground_truth': defaultdict(list),  # {frame: [(id, bbox)]}
-            'id_mappings': {},  # Відповідність predicted_id -> gt_id
-            'id_switches': 0,
-            'false_positives_tracking': 0,
-            'false_negatives_tracking': 0,
-            'matches': 0
+            "predictions":             defaultdict(list),
+            "ground_truth":            defaultdict(list),
+            "id_mappings":             {},
+            "id_switches":             0,
+            "false_positives_tracking": 0,
+            "false_negatives_tracking": 0,
+            "matches":                 0,
         }
-    
+
+        # NEW: записи треків по кадрам (для швидкостей)
+        self._track_records: dict = defaultdict(list)   # {tid: [(frame, cx, cy)]}
+        self._accident_records: list = []               # list of dicts
+
+    # ----------------------------------------------------------
+    #  Базові update методи
+    # ----------------------------------------------------------
+
     def set_video_info(self, width, height, fps, total_frames, path):
-        self.metrics['video_info'] = {
-            'path': path,
-            'resolution': f"{width}x{height}",
-            'fps': fps,
-            'total_frames': total_frames,
-            'duration_seconds': total_frames / fps if fps > 0 else 0
+        self.metrics["video_info"] = {
+            "path":             path,
+            "resolution":       f"{width}x{height}",
+            "fps":              fps,
+            "total_frames":     total_frames,
+            "duration_seconds": total_frames / fps if fps > 0 else 0,
         }
-    
+
     def start_processing(self):
         self.start_time = cv2.getTickCount()
-    
-    def update_frame_metrics(self, frame_time_ms):
+
+    def update_frame_metrics(self, frame_time_ms: float):
         self.frame_times.append(frame_time_ms)
-        self.metrics['processing']['total_frames'] += 1
-    
+        self.metrics["processing"]["total_frames"] += 1
+        self.metrics["performance"]["frame_times_ms"].append(frame_time_ms)
+        # Знімаємо зразок пам'яті кожні 30 кадрів (щоб не навантажувати)
+        tf = self.metrics["processing"]["total_frames"]
+        if tf % 30 == 0:
+            self.update_memory_usage()
+
+    def update_memory_usage(self):
+        """Фіксує поточне RSS-споживання пам'яті процесу (в МБ)."""
+        try:
+            mem_mb = self._process.memory_info().rss / (1024 * 1024)
+            self._memory_samples.append(mem_mb)
+        except Exception:
+            pass
+
+    def record_roi_frame(self):
+        """Викликається коли кадр оброблявся через ROI-зону."""
+        self._roi_frames_count += 1
+
+    def record_cnn_skip(self):
+        """Викликається коли CNN-інференс пропущено для кадру."""
+        self._cnn_skipped_count += 1
+
     def update_yolo_metrics(self, detections, confidences):
-        self.metrics['detection']['yolo']['total_detections'] += len(detections)
+        self.metrics["detection"]["yolo"]["total_detections"] += len(detections)
         if confidences:
-            self.metrics['detection']['yolo']['avg_confidence'].extend(confidences)
-        self.metrics['detection']['yolo']['detections_per_frame'].append(len(detections))
-        
-        if len(detections) > 0:
-            self.metrics['processing']['frames_with_detections'] += 1
-    
-    def update_cnn_metrics(self, num_inferences, inference_time_ms, scores):
-        self.metrics['detection']['cnn']['total_inferences'] += num_inferences
-        self.metrics['detection']['cnn']['avg_inference_time_ms'].append(inference_time_ms)
-        
+            self.metrics["detection"]["yolo"]["avg_confidence"].extend(confidences)
+        self.metrics["detection"]["yolo"]["detections_per_frame"].append(len(detections))
+        if detections:
+            self.metrics["processing"]["frames_with_detections"] += 1
+
+    def update_cnn_metrics(self, num_inferences: int, inference_time_ms: float, scores: list):
+        self.metrics["detection"]["cnn"]["total_inferences"] += num_inferences
+        self.metrics["detection"]["cnn"]["avg_inference_time_ms"].append(inference_time_ms)
+        self.metrics["detection"]["cnn"]["scores_history"].extend(scores)
         for score in scores:
             if score > 0.9:
-                self.metrics['detection']['cnn']['high_confidence_predictions'] += 1
+                self.metrics["detection"]["cnn"]["high_confidence_predictions"] += 1
             elif score > 0.7:
-                self.metrics['detection']['cnn']['medium_confidence_predictions'] += 1
+                self.metrics["detection"]["cnn"]["medium_confidence_predictions"] += 1
             else:
-                self.metrics['detection']['cnn']['low_confidence_predictions'] += 1
-    
-    def update_tracking_metrics(self, active_ids, track_history):
-        self.metrics['tracking']['unique_vehicles'].update(active_ids)
-        current_tracks = len(active_ids)
-        
-        if current_tracks > self.metrics['tracking']['max_simultaneous_tracks']:
-            self.metrics['tracking']['max_simultaneous_tracks'] = current_tracks
-        
+                self.metrics["detection"]["cnn"]["low_confidence_predictions"] += 1
+            # Рахуємо тільки ті що реально тригернули аварійну перевірку
+            if score >= 0.86:
+                self.metrics["detection"]["cnn"]["accident_trigger_inferences"] += 1
+        if scores:
+            self._current_frame_max_score = max(self._current_frame_max_score, max(scores))
+
+    def update_tracking_metrics(self, active_ids: list, track_history: dict):
+        self.metrics["tracking"]["unique_vehicles"].update(active_ids)
+        n = len(active_ids)
+        self.metrics["tracking"]["tracks_per_frame"].append(n)
+        if n > self.metrics["tracking"]["max_simultaneous_tracks"]:
+            self.metrics["tracking"]["max_simultaneous_tracks"] = n
         for tid in active_ids:
             if tid in track_history:
-                self.metrics['tracking']['avg_track_length'].append(len(track_history[tid]))
-    
-    def update_accident_metrics(self, accidents_this_frame, num_vehicles, collision_warnings, sudden_stops):
+                self.metrics["tracking"]["avg_track_length"].append(len(track_history[tid]))
+
+    def update_accident_metrics(self, accidents_this_frame: bool,
+                                num_vehicles: int,
+                                collision_warnings: int,
+                                sudden_stops: int):
+        frame_num = self.metrics["processing"]["total_frames"]
+        label = 1 if accidents_this_frame else 0
+        self.metrics["accidents"]["all_frame_labels"].append(label)
+        self.metrics["accidents"]["all_frame_scores"].append(self._current_frame_max_score)
+        self._current_frame_max_score = 0.0
+
         if accidents_this_frame:
-            self.metrics['accidents']['total_accidents_detected'] += 1
-            self.metrics['accidents']['accidents_by_frame'].append(
-                self.metrics['processing']['total_frames']
+            # НЕ інкрементуємо total_accidents_detected тут!
+            # Підрахунок унікальних інцидентів відбувається в record_accident()
+            # через реєстр _incidents. Це виключає повторний рахунок одного ДТП
+            # на кожному кадрі поки воно активне (ACCIDENT_LIFETIME = 90 кадрів).
+            self.metrics["accidents"]["accidents_by_frame"].append(frame_num)
+        self.metrics["accidents"]["collision_warnings"] += collision_warnings
+        self.metrics["accidents"]["sudden_stops"]       += sudden_stops
+
+    # ----------------------------------------------------------
+    #  NEW: record_tracks — зберігає позиції треків по кадрам
+    # ----------------------------------------------------------
+    def record_tracks(self, frame_num: int, boxes: list, ids: list):
+        """Зберігає позиції бок-сів для кожного треку (для швидкостей та MOTP)."""
+        for tid, (x1, y1, x2, y2) in zip(ids, boxes):
+            cx = (x1 + x2) / 2
+            cy = (y1 + y2) / 2
+            self._track_records[tid].append((frame_num, cx, cy))
+
+    # ----------------------------------------------------------
+    #  NEW: record_accident
+    # ----------------------------------------------------------
+    def record_accident(self, frame_num: int, accident_type: str,
+                        confidence: float, involved_tracks: list, severity: str):
+        """
+        Детальний запис аварійної події + дедуплікація інцидентів.
+
+        Логіка підрахунку унікальних ДТП:
+        ----------------------------------
+        Проблема: один ДТП активний 90 кадрів (ACCIDENT_LIFETIME).
+        Без дедуплікації → 90 записів → «50 аварій» замість 1-2.
+
+        Рішення — реєстр _incidents:
+        1. При першому підтвердженні треку (type='collision') → новий інцидент.
+        2. Якщо цей же трек знову підтверджується в межах INCIDENT_MERGE_FRAMES
+           → той самий інцидент (не новий).
+        3. Якщо РІЗНІ треки підтверджуються в межах INCIDENT_MERGE_FRAMES
+           → перевіряємо чи не перетинаються з існуючим інцидентом.
+           Якщо так — merge (id=6 вдарився в id=5 після id=4+id=5 → один інцидент).
+        4. Кількість авто = len(incident['track_ids']) — унікальні, не сума по кадрах.
+        """
+        self._accident_records.append({
+            "frame":            frame_num,
+            "type":             accident_type,
+            "confidence":       confidence,
+            "involved_tracks":  involved_tracks,
+            "severity":         severity,
+            "timestamp":        datetime.now().isoformat(),
+        })
+        self.metrics["accidents"]["accident_confidences"].append(confidence)
+
+        # Тільки перше підтвердження треку рахується як потенційно новий інцидент
+        if accident_type not in ('collision', 'confirmed'):
+            return
+
+        for track_id in involved_tracks:
+            # Перевіряємо чи цей трек вже прив'язаний до активного інциденту
+            existing_incident_id = self._track_to_incident.get(track_id)
+            if existing_incident_id is not None:
+                inc = self._incidents.get(existing_incident_id)
+                if inc and (frame_num - inc['last_frame']) <= self.INCIDENT_MERGE_FRAMES:
+                    # Той самий інцидент — оновлюємо метадані
+                    inc['last_frame'] = frame_num
+                    inc['max_conf']   = max(inc['max_conf'], confidence)
+                    inc['track_ids'].add(track_id)
+                    continue
+                # Інцидент застарів → трек може стати частиною нового
+
+            # Шукаємо активний інцидент до якого можна приєднати цей трек
+            # (наприклад: id=5 вже в інциденті 1, тепер id=5 б'є id=6 → merge)
+            merged = False
+            for iid, inc in self._incidents.items():
+                if (frame_num - inc['last_frame']) <= self.INCIDENT_MERGE_FRAMES:
+                    if track_id in inc['track_ids']:
+                        # Цей трек вже в активному інциденті → merge нових треків
+                        for new_tid in involved_tracks:
+                            inc['track_ids'].add(new_tid)
+                            self._track_to_incident[new_tid] = iid
+                        inc['last_frame'] = frame_num
+                        inc['max_conf']   = max(inc['max_conf'], confidence)
+                        merged = True
+                        break
+
+            if not merged:
+                # Новий інцидент
+                iid = self._next_incident_id
+                self._next_incident_id += 1
+                self._incidents[iid] = {
+                    'start_frame': frame_num,
+                    'last_frame':  frame_num,
+                    'track_ids':   set(involved_tracks),
+                    'max_conf':    confidence,
+                    'severity':    severity,
+                }
+                for new_tid in involved_tracks:
+                    self._track_to_incident[new_tid] = iid
+
+    # ----------------------------------------------------------
+    #  NEW: update_tracking_for_evaluation
+    # ----------------------------------------------------------
+    def update_tracking_for_evaluation(self, frame_num: int,
+                                       predicted_tracks: list,
+                                       iou_threshold: float = 0.5):
+        """
+        Зберігає predicted треки для frame_num і одразу
+        порівнює з ground truth якщо є.
+        predicted_tracks: list of (tid, bbox, conf)
+
+        ВАЖЛИВО: predictions зберігаються ЗАВЖДИ — навіть якщо ground_truth
+        ще не завантажено. Це необхідно для auto_generate_gt режиму, де
+        _auto_generate_ground_truth() будує pseudo-GT з цих predictions у finalize().
+        """
+        # Завжди зберігаємо predictions (потрібно для auto_generate_gt)
+        self.tracking_data["predictions"][frame_num] = predicted_tracks
+
+        # Порівнюємо з GT тільки якщо він вже є
+        if self.ground_truth:
+            gt_tracks = self._get_ground_truth_tracks(frame_num)
+            self.tracking_data["ground_truth"][frame_num] = gt_tracks
+
+            matches, fp, fn, id_sw = self._match_tracks(
+                predicted_tracks, gt_tracks, iou_threshold
             )
-            self.metrics['accidents']['average_vehicles_per_accident'].append(num_vehicles)
-        
-        self.metrics['accidents']['collision_warnings'] += collision_warnings
-        self.metrics['accidents']['sudden_stops'] += sudden_stops
-    
-    # ========== НОВІ МЕТОДИ ДЛЯ РОЗШИРЕНИХ МЕТРИК ==========
-    
-    def update_detection_for_evaluation(self, frame_num: int, predicted_accident: bool, 
-                                       confidence: float):
+            self.tracking_data["matches"]                  += matches
+            self.tracking_data["false_positives_tracking"] += fp
+            self.tracking_data["false_negatives_tracking"] += fn
+            self.tracking_data["id_switches"]              += id_sw
+
+    # ----------------------------------------------------------
+    #  NEW: update_lstm_metrics
+    # ----------------------------------------------------------
+    def update_lstm_metrics(self, lstm_probs: dict):
         """
-        Оновлює дані для обчислення Precision, Recall, F1, ROC
-        
-        Args:
-            frame_num: Номер кадру
-            predicted_accident: Чи була передбачена аварія
-            confidence: Впевненість передбачення (0-1)
+        lstm_probs: {tid: probability}
         """
-        if self.ground_truth is None:
+        if not lstm_probs:
             return
-        
-        # Перевіряємо ground truth
-        gt_accident = self._is_accident_in_ground_truth(frame_num)
-        
-        # Зберігаємо для ROC
-        self.detection_scores.append(confidence)
-        self.detection_labels.append(1 if gt_accident else 0)
-        
-        # Оновлюємо confusion matrix
-        if predicted_accident and gt_accident:
-            self.metrics['evaluation']['confusion_matrix']['true_positives'] += 1
-        elif predicted_accident and not gt_accident:
-            self.metrics['evaluation']['confusion_matrix']['false_positives'] += 1
-        elif not predicted_accident and gt_accident:
-            self.metrics['evaluation']['confusion_matrix']['false_negatives'] += 1
-        else:
-            self.metrics['evaluation']['confusion_matrix']['true_negatives'] += 1
-    
-    def update_tracking_for_evaluation(self, frame_num: int, predicted_tracks: List[Tuple],
-                                      iou_threshold: float = 0.5):
-        """
-        Оновлює дані для обчислення MOTA, IDF1
-        
-        Args:
-            frame_num: Номер кадру
-            predicted_tracks: [(track_id, bbox, confidence), ...]
-            iou_threshold: Поріг IoU для matching
-        """
-        if self.ground_truth is None:
-            return
-        
-        # Зберігаємо предикції
-        self.tracking_data['predictions'][frame_num] = predicted_tracks
-        
-        # Отримуємо ground truth для цього кадру
-        gt_tracks = self._get_ground_truth_tracks(frame_num)
-        self.tracking_data['ground_truth'][frame_num] = gt_tracks
-        
-        # Matching predicted і ground truth треків
-        matches, fp, fn, id_switches = self._match_tracks(
-            predicted_tracks, gt_tracks, iou_threshold
-        )
-        
-        self.tracking_data['matches'] += matches
-        self.tracking_data['false_positives_tracking'] += fp
-        self.tracking_data['false_negatives_tracking'] += fn
-        self.tracking_data['id_switches'] += id_switches
-    
+        self.metrics["lstm"]["enabled"] = True
+        probs = list(lstm_probs.values())
+        self.metrics["lstm"]["avg_accident_prob"].append(float(np.mean(probs)))
+        self.metrics["lstm"]["max_accident_prob"].append(float(np.max(probs)))
+        high = sum(1 for p in probs if p >= 0.7)
+        self.metrics["lstm"]["high_risk_tracks_count"].append(high)
+
+    # ----------------------------------------------------------
+    #  Ground Truth helpers
+    # ----------------------------------------------------------
+
     def _is_accident_in_ground_truth(self, frame_num: int) -> bool:
-        """Перевіряє чи є аварія в ground truth для цього кадру"""
-        if not self.ground_truth or 'frame_annotations' not in self.ground_truth:
+        if not self.ground_truth or "frame_annotations" not in self.ground_truth:
             return False
-        
-        frame_key = str(frame_num)
-        if frame_key in self.ground_truth['frame_annotations']:
-            return self.ground_truth['frame_annotations'][frame_key].get('accident', False)
-        
-        return False
-    
+        ann = self.ground_truth["frame_annotations"].get(str(frame_num), {})
+        return ann.get("accident", False)
+
     def _get_ground_truth_tracks(self, frame_num: int) -> List[Tuple]:
-        """Повертає ground truth треки для кадру"""
-        if not self.ground_truth or 'frame_annotations' not in self.ground_truth:
+        if not self.ground_truth or "frame_annotations" not in self.ground_truth:
             return []
-        
-        frame_key = str(frame_num)
-        if frame_key in self.ground_truth['frame_annotations']:
-            annotation = self.ground_truth['frame_annotations'][frame_key]
-            if 'vehicles' in annotation and 'bboxes' in annotation:
-                return list(zip(annotation['vehicles'], annotation['bboxes']))
-        
+        ann = self.ground_truth["frame_annotations"].get(str(frame_num), {})
+        if "vehicles" in ann and "bboxes" in ann:
+            return list(zip(ann["vehicles"], ann["bboxes"]))
         return []
-    
-    def _match_tracks(self, predicted: List[Tuple], ground_truth: List[Tuple],
-                     iou_threshold: float) -> Tuple[int, int, int, int]:
-        """
-        Matching predicted і ground truth треків
-        
-        Returns:
-            (matches, false_positives, false_negatives, id_switches)
-        """
+
+    # ----------------------------------------------------------
+    #  Matching / IoU
+    # ----------------------------------------------------------
+
+    def _match_tracks(self, predicted: list, ground_truth: list,
+                      iou_threshold: float) -> Tuple[int, int, int, int]:
         if not predicted and not ground_truth:
             return 0, 0, 0, 0
-        
         if not predicted:
             return 0, 0, len(ground_truth), 0
-        
         if not ground_truth:
             return 0, len(predicted), 0, 0
-        
-        # Обчислюємо IoU матрицю
+
         iou_matrix = np.zeros((len(predicted), len(ground_truth)))
-        
-        for i, (pred_id, pred_bbox, _) in enumerate(predicted):
-            for j, (gt_id, gt_bbox) in enumerate(ground_truth):
+        for i, (pred_id, pred_bbox, *_) in enumerate(predicted):
+            for j, (gt_id, gt_bbox, *_) in enumerate(ground_truth):
                 iou_matrix[i, j] = self._compute_iou(pred_bbox, gt_bbox)
-        
-        # Жадібний matching
-        matches = 0
-        id_switches = 0
+
+        matches, id_switches = 0, 0
         matched_pred = set()
-        matched_gt = set()
-        
-        # Сортуємо за IoU (найбільші спочатку)
-        flat_indices = np.argsort(-iou_matrix.flatten())
-        
-        for idx in flat_indices:
+        matched_gt   = set()
+
+        for idx in np.argsort(-iou_matrix.flatten()):
             i = idx // len(ground_truth)
             j = idx % len(ground_truth)
-            
             if i in matched_pred or j in matched_gt:
                 continue
-            
             if iou_matrix[i, j] >= iou_threshold:
                 matches += 1
                 matched_pred.add(i)
                 matched_gt.add(j)
-                
-                # Перевірка ID switch
                 pred_id = predicted[i][0]
-                gt_id = ground_truth[j][0]
-                
-                if pred_id in self.tracking_data['id_mappings']:
-                    if self.tracking_data['id_mappings'][pred_id] != gt_id:
+                gt_id   = ground_truth[j][0]
+                if pred_id in self.tracking_data["id_mappings"]:
+                    if self.tracking_data["id_mappings"][pred_id] != gt_id:
                         id_switches += 1
-                
-                self.tracking_data['id_mappings'][pred_id] = gt_id
-        
-        false_positives = len(predicted) - matches
-        false_negatives = len(ground_truth) - matches
-        
-        return matches, false_positives, false_negatives, id_switches
-    
-    def _compute_iou(self, box1: List, box2: List) -> float:
-        """Обчислює IoU між двома bbox"""
-        x1_min, y1_min, x1_max, y1_max = box1
-        x2_min, y2_min, x2_max, y2_max = box2
-        
-        # Перетин
-        xi_min = max(x1_min, x2_min)
-        yi_min = max(y1_min, y2_min)
-        xi_max = min(x1_max, x2_max)
-        yi_max = min(y1_max, y2_max)
-        
-        inter_area = max(0, xi_max - xi_min) * max(0, yi_max - yi_min)
-        
-        # Об'єднання
-        box1_area = (x1_max - x1_min) * (y1_max - y1_min)
-        box2_area = (x2_max - x2_min) * (y2_max - y2_min)
-        union_area = box1_area + box2_area - inter_area
-        
-        return inter_area / union_area if union_area > 0 else 0
-    
-    def compute_precision_recall_f1(self):
-        """Обчислює Precision, Recall, F1-score"""
-        cm = self.metrics['evaluation']['confusion_matrix']
-        tp = cm['true_positives']
-        fp = cm['false_positives']
-        fn = cm['false_negatives']
-        tn = cm['true_negatives']
-        
-        # Precision
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-        
-        # Recall
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-        
-        # F1-Score
-        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
-        
-        # Accuracy
-        accuracy = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0
-        
-        self.metrics['evaluation']['precision'] = round(precision, 4)
-        self.metrics['evaluation']['recall'] = round(recall, 4)
-        self.metrics['evaluation']['f1_score'] = round(f1, 4)
-        self.metrics['evaluation']['accuracy'] = round(accuracy, 4)
-    
+                self.tracking_data["id_mappings"][pred_id] = gt_id
+
+        fp = len(predicted)  - matches
+        fn = len(ground_truth) - matches
+        return matches, fp, fn, id_switches
+
+    def _compute_iou(self, box1, box2) -> float:
+        x1a, y1a, x2a, y2a = box1
+        x1b, y1b, x2b, y2b = box2
+        xi1 = max(x1a, x1b);  yi1 = max(y1a, y1b)
+        xi2 = min(x2a, x2b);  yi2 = min(y2a, y2b)
+        inter = max(0, xi2 - xi1) * max(0, yi2 - yi1)
+        a1 = (x2a - x1a) * (y2a - y1a)
+        a2 = (x2b - x1b) * (y2b - y1b)
+        union = a1 + a2 - inter
+        return inter / union if union > 0 else 0.0
+
+    # ----------------------------------------------------------
+    #  Compute mAP
+    # ----------------------------------------------------------
+
     def compute_map(self, iou_thresholds: List[float] = [0.5, 0.75]):
-        """
-        Обчислює mAP (mean Average Precision)
-        
-        Args:
-            iou_thresholds: Пороги IoU для обчислення (наприклад, [0.5, 0.75])
-        """
         if not self.ground_truth:
             return
-        
-        # Збираємо всі детекції по кадрах
-        all_predictions = []
-        all_ground_truths = []
-        
-        for frame_num in self.tracking_data['predictions']:
-            predictions = self.tracking_data['predictions'][frame_num]
-            gt = self.tracking_data['ground_truth'].get(frame_num, [])
-            
-            all_predictions.extend([(frame_num, *p) for p in predictions])
-            all_ground_truths.extend([(frame_num, *g) for g in gt])
-        
-        # Обчислюємо AP для кожного IoU threshold
+        all_preds, all_gts = [], []
+        for fn in self.tracking_data["predictions"]:
+            preds = self.tracking_data["predictions"][fn]
+            gts   = self.tracking_data["ground_truth"].get(fn, [])
+            all_preds.extend([(fn, *p) for p in preds])
+            all_gts.extend([(fn, *g) for g in gts])
+
         aps = []
-        for iou_thresh in iou_thresholds:
-            ap = self._compute_average_precision(all_predictions, all_ground_truths, iou_thresh)
+        for thr in iou_thresholds:
+            ap = self._compute_average_precision(all_preds, all_gts, thr)
             aps.append(ap)
-            
-            if iou_thresh == 0.5:
-                self.metrics['evaluation']['mAP_50'] = round(ap, 4)
-            elif iou_thresh == 0.75:
-                self.metrics['evaluation']['mAP_75'] = round(ap, 4)
-        
-        # mAP - середнє по всіх IoU thresholds
-        self.metrics['evaluation']['mAP'] = round(np.mean(aps), 4)
-    
+            if thr == 0.5:
+                self.metrics["evaluation"]["mAP_50"] = round(ap, 4)
+            elif thr == 0.75:
+                self.metrics["evaluation"]["mAP_75"] = round(ap, 4)
+        self.metrics["evaluation"]["mAP"] = round(float(np.mean(aps)), 4)
+
     def _compute_average_precision(self, predictions, ground_truths, iou_threshold):
-        """Обчислює Average Precision для заданого IoU threshold"""
         if not predictions or not ground_truths:
             return 0.0
-        
-        # Сортуємо predictions по confidence (від найбільшої)
         predictions = sorted(predictions, key=lambda x: x[3], reverse=True)
-        
         tp = np.zeros(len(predictions))
         fp = np.zeros(len(predictions))
-        
         gt_matched = set()
-        
         for i, pred in enumerate(predictions):
             frame, pred_id, pred_bbox, conf = pred
-            
-            best_iou = 0
-            best_gt_idx = -1
-            
+            best_iou, best_j = 0.0, -1
             for j, gt in enumerate(ground_truths):
-                gt_frame, gt_id, gt_bbox = gt
-                
-                if frame != gt_frame:
+                if gt[0] != frame:
                     continue
-                
-                iou = self._compute_iou(pred_bbox, gt_bbox)
-                
+                iou = self._compute_iou(pred_bbox, gt[2])
                 if iou > best_iou:
-                    best_iou = iou
-                    best_gt_idx = j
-            
-            if best_iou >= iou_threshold and best_gt_idx not in gt_matched:
+                    best_iou, best_j = iou, j
+            if best_iou >= iou_threshold and best_j not in gt_matched:
                 tp[i] = 1
-                gt_matched.add(best_gt_idx)
+                gt_matched.add(best_j)
             else:
                 fp[i] = 1
-        
-        # Обчислюємо precision і recall
-        tp_cumsum = np.cumsum(tp)
-        fp_cumsum = np.cumsum(fp)
-        
-        recalls = tp_cumsum / len(ground_truths)
-        precisions = tp_cumsum / (tp_cumsum + fp_cumsum)
-        
-        # Обчислюємо AP (площа під PR кривою)
-        ap = 0
-        for i in range(1, len(recalls)):
-            ap += (recalls[i] - recalls[i-1]) * precisions[i]
-        
+        tpc = np.cumsum(tp)
+        fpc = np.cumsum(fp)
+        recalls    = tpc / max(len(ground_truths), 1)
+        precisions = tpc / (tpc + fpc + 1e-9)
+        ap = float(np.sum((recalls[1:] - recalls[:-1]) * precisions[1:]))
         return ap
-    
-    def compute_mota_idf1(self):
-        """
-        Обчислює MOTA (Multiple Object Tracking Accuracy) та IDF1
-        """
-        if not self.ground_truth:
-            return
-        
-        # MOTA = 1 - (FN + FP + ID_switches) / GT
-        total_gt = sum(len(self.tracking_data['ground_truth'][f]) 
-                      for f in self.tracking_data['ground_truth'])
-        
-        if total_gt == 0:
-            return
-        
-        fn = self.tracking_data['false_negatives_tracking']
-        fp = self.tracking_data['false_positives_tracking']
-        id_sw = self.tracking_data['id_switches']
-        
-        mota = 1 - (fn + fp + id_sw) / total_gt
-        self.metrics['tracking_evaluation']['MOTA'] = round(mota, 4)
-        
-        # IDF1 = 2 * IDTP / (2 * IDTP + IDFP + IDFN)
-        matches = self.tracking_data['matches']
-        
-        idf1 = 2 * matches / (2 * matches + fp + fn) if (2 * matches + fp + fn) > 0 else 0
-        self.metrics['tracking_evaluation']['IDF1'] = round(idf1, 4)
-        
-        # Додаткові метрики
-        self.metrics['tracking_evaluation']['id_switches'] = id_sw
-        self.metrics['tracking_evaluation']['false_positives'] = fp
-        self.metrics['tracking_evaluation']['false_negatives'] = fn
-    
-    def compute_roc_auc(self):
-        """Обчислює ROC криву та AUC"""
-        if len(self.detection_scores) == 0 or len(self.detection_labels) == 0:
-            return
-        
-        # Обчислюємо ROC
-        fpr, tpr, thresholds = roc_curve(self.detection_labels, self.detection_scores)
-        roc_auc = auc(fpr, tpr)
-        
-        self.metrics['roc_data']['fpr'] = fpr.tolist()
-        self.metrics['roc_data']['tpr'] = tpr.tolist()
-        self.metrics['roc_data']['thresholds'] = thresholds.tolist()
-        self.metrics['roc_data']['auc'] = round(roc_auc, 4)
-    
-    def compute_precision_recall_curve(self):
-        """Обчислює Precision-Recall криву"""
-        if len(self.detection_scores) == 0 or len(self.detection_labels) == 0:
-            return
-        
-        precision, recall, thresholds = precision_recall_curve(
-            self.detection_labels, self.detection_scores
-        )
-        
-        # Average Precision
-        from sklearn.metrics import average_precision_score
-        avg_precision = average_precision_score(self.detection_labels, self.detection_scores)
-        
-        self.metrics['precision_recall_data']['precision'] = precision.tolist()
-        self.metrics['precision_recall_data']['recall'] = recall.tolist()
-        self.metrics['precision_recall_data']['thresholds'] = thresholds.tolist()
-        self.metrics['precision_recall_data']['average_precision'] = round(avg_precision, 4)
-    
-    def plot_roc_curve(self, save_path: str):
-        """Малює та зберігає ROC криву"""
-        if not self.metrics['roc_data']['fpr']:
-            print("⚠️ Немає даних для ROC кривої")
-            return
-        
-        plt.figure(figsize=(10, 8))
-        plt.plot(
-            self.metrics['roc_data']['fpr'], 
-            self.metrics['roc_data']['tpr'],
-            color='darkorange',
-            lw=2,
-            label=f'ROC curve (AUC = {self.metrics["roc_data"]["auc"]:.4f})'
-        )
-        plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', label='Random')
-        plt.xlim([0.0, 1.0])
-        plt.ylim([0.0, 1.05])
-        plt.xlabel('False Positive Rate', fontsize=12)
-        plt.ylabel('True Positive Rate', fontsize=12)
-        plt.title('Receiver Operating Characteristic (ROC) Curve', fontsize=14)
-        plt.legend(loc="lower right")
-        plt.grid(alpha=0.3)
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        print(f"✅ ROC крива збережена: {save_path}")
-    
-    def plot_precision_recall_curve(self, save_path: str):
-        """Малює та зберігає Precision-Recall криву"""
-        if not self.metrics['precision_recall_data']['precision']:
-            print("⚠️ Немає даних для PR кривої")
-            return
-        
-        plt.figure(figsize=(10, 8))
-        plt.plot(
-            self.metrics['precision_recall_data']['recall'],
-            self.metrics['precision_recall_data']['precision'],
-            color='blue',
-            lw=2,
-            label=f'PR curve (AP = {self.metrics["precision_recall_data"]["average_precision"]:.4f})'
-        )
-        plt.xlim([0.0, 1.0])
-        plt.ylim([0.0, 1.05])
-        plt.xlabel('Recall', fontsize=12)
-        plt.ylabel('Precision', fontsize=12)
-        plt.title('Precision-Recall Curve', fontsize=14)
-        plt.legend(loc="lower left")
-        plt.grid(alpha=0.3)
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        print(f"✅ PR крива збережена: {save_path}")
-    
-    def plot_confusion_matrix(self, save_path: str):
-        """Малює та зберігає confusion matrix"""
-        cm = self.metrics['evaluation']['confusion_matrix']
-        
-        matrix = np.array([
-            [cm['true_negatives'], cm['false_positives']],
-            [cm['false_negatives'], cm['true_positives']]
-        ])
-        
-        plt.figure(figsize=(8, 6))
-        plt.imshow(matrix, interpolation='nearest', cmap=plt.cm.Blues)
-        plt.title('Confusion Matrix', fontsize=14)
-        plt.colorbar()
-        
-        classes = ['No Accident', 'Accident']
-        tick_marks = np.arange(len(classes))
-        plt.xticks(tick_marks, classes, fontsize=12)
-        plt.yticks(tick_marks, classes, fontsize=12)
-        
-        # Додаємо текст
-        thresh = matrix.max() / 2.
-        for i in range(2):
-            for j in range(2):
-                plt.text(j, i, format(matrix[i, j], 'd'),
-                        ha="center", va="center",
-                        color="white" if matrix[i, j] > thresh else "black",
-                        fontsize=16)
-        
-        plt.ylabel('True label', fontsize=12)
-        plt.xlabel('Predicted label', fontsize=12)
-        plt.tight_layout()
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        print(f"✅ Confusion matrix збережена: {save_path}")
-    
-    def finalize(self):
-        """Фінальні обчислення після обробки всього відео"""
-        end_time = cv2.getTickCount()
 
+    # ----------------------------------------------------------
+    #  Compute MOTA / IDF1
+    # ----------------------------------------------------------
+
+    def compute_mota_idf1(self):
+        total_gt = total_matches = total_fp = total_fn = total_id_sw = 0
+        for frame_num in self.tracking_data["predictions"]:
+            pred = self.tracking_data["predictions"][frame_num]
+            gt   = self.tracking_data["ground_truth"].get(frame_num, [])
+            m, fp, fn, id_sw = self._match_tracks(pred, gt, iou_threshold=0.3)
+            total_matches += m
+            total_fp      += fp
+            total_fn      += fn
+            total_id_sw   += id_sw
+            total_gt      += len(gt)
+
+        if total_gt > 0:
+            mota = 1 - (total_fn + total_fp + total_id_sw) / total_gt
+        else:
+            mota = 0.0
+        denom = 2 * total_matches + total_fp + total_fn
+        idf1  = 2 * total_matches / denom if denom > 0 else 0.0
+
+        self.metrics["tracking_evaluation"]["MOTA"]            = round(mota, 4)
+        self.metrics["tracking_evaluation"]["IDF1"]            = round(idf1, 4)
+        self.metrics["tracking_evaluation"]["id_switches"]     = total_id_sw
+        self.metrics["tracking_evaluation"]["false_positives"] = total_fp
+        self.metrics["tracking_evaluation"]["false_negatives"] = total_fn
+
+    # ----------------------------------------------------------
+    #  NEW: Compute classification metrics (Precision/Recall/F1/ROC)
+    # ----------------------------------------------------------
+
+    def compute_classification_metrics(self):
+        """
+        Обчислює Precision, Recall, F1, Accuracy, ROC-AUC, PR-AUC
+        для детекції аварій на рівні кадрів.
+        Потребує ground truth або використовує самозгенеровані мітки.
+        """
+        scores = self.metrics["accidents"]["all_frame_scores"]
+        labels = self.metrics["accidents"]["all_frame_labels"]
+
+        # Якщо немає ground truth — fallback: score > threshold = label
+        if not self.ground_truth and not scores:
+            return
+
+        if len(scores) < 2 or len(labels) < 2:
+            return
+
+        # Вирівнюємо довжини (можуть відрізнятись через різні шляхи запису)
+        n = min(len(scores), len(labels))
+        scores, labels = np.array(scores[:n], dtype=float), np.array(labels[:n], dtype=int)
+
+        if len(np.unique(labels)) < 2:
+            return   # тільки один клас — метрики безглузді
+
+        # ROC
+        fpr, tpr, thresholds = roc_curve(labels, scores)
+        roc_auc = auc(fpr, tpr)
+        self.metrics["roc_data"]["fpr"]        = fpr.tolist()
+        self.metrics["roc_data"]["tpr"]        = tpr.tolist()
+        self.metrics["roc_data"]["thresholds"] = thresholds.tolist()
+        self.metrics["roc_data"]["auc"]        = round(float(roc_auc), 4)
+
+        # Precision-Recall
+        precision_arr, recall_arr, pr_thresh = precision_recall_curve(labels, scores)
+        ap = average_precision_score(labels, scores)
+        self.metrics["precision_recall_data"]["precision"]         = precision_arr.tolist()
+        self.metrics["precision_recall_data"]["recall"]            = recall_arr.tolist()
+        self.metrics["precision_recall_data"]["thresholds"]        = pr_thresh.tolist()
+        self.metrics["precision_recall_data"]["average_precision"] = round(float(ap), 4)
+
+        # При фіксованому порозі 0.5
+        predicted_labels = (scores >= 0.5).astype(int)
+        tp = int(np.sum((predicted_labels == 1) & (labels == 1)))
+        fp = int(np.sum((predicted_labels == 1) & (labels == 0)))
+        fn = int(np.sum((predicted_labels == 0) & (labels == 1)))
+        tn = int(np.sum((predicted_labels == 0) & (labels == 0)))
+
+        precision  = tp / (tp + fp + 1e-9)
+        recall     = tp / (tp + fn + 1e-9)
+        f1         = 2 * precision * recall / (precision + recall + 1e-9)
+        accuracy   = (tp + tn) / (tp + fp + fn + tn + 1e-9)
+        fpr_val    = fp / (fp + tn + 1e-9)
+
+        self.metrics["evaluation"]["precision"]          = round(float(precision), 4)
+        self.metrics["evaluation"]["recall"]             = round(float(recall), 4)
+        self.metrics["evaluation"]["f1_score"]           = round(float(f1), 4)
+        self.metrics["evaluation"]["accuracy"]           = round(float(accuracy), 4)
+        self.metrics["evaluation"]["false_positive_rate"] = round(float(fpr_val), 4)
+        self.metrics["evaluation"]["true_positive_rate"]  = round(float(recall), 4)
+
+    # ----------------------------------------------------------
+    #  NEW: Compute latency percentiles
+    # ----------------------------------------------------------
+
+    def compute_latency_percentiles(self):
+        times = self.metrics["performance"]["frame_times_ms"]
+        if not times:
+            return
+        arr = np.array(times, dtype=float)
+        self.metrics["latency"]["p50_ms"] = round(float(np.percentile(arr, 50)), 2)
+        self.metrics["latency"]["p90_ms"] = round(float(np.percentile(arr, 90)), 2)
+        self.metrics["latency"]["p95_ms"] = round(float(np.percentile(arr, 95)), 2)
+        self.metrics["latency"]["p99_ms"] = round(float(np.percentile(arr, 99)), 2)
+        self.metrics["latency"]["min_ms"] = round(float(np.min(arr)), 2)
+        self.metrics["latency"]["max_ms"] = round(float(np.max(arr)), 2)
+
+    # ----------------------------------------------------------
+    #  NEW: Compute speed metrics
+    # ----------------------------------------------------------
+
+    def compute_speed_metrics(self):
+        speeds = []
+        for tid, records in self._track_records.items():
+            for k in range(1, len(records)):
+                dx = records[k][1] - records[k-1][1]
+                dy = records[k][2] - records[k-1][2]
+                speeds.append(np.sqrt(dx**2 + dy**2))
+        if not speeds:
+            return
+        arr = np.array(speeds)
+        self.metrics["speed_metrics"]["avg_speed_px_per_frame"] = round(float(np.mean(arr)), 2)
+        self.metrics["speed_metrics"]["max_speed_px_per_frame"] = round(float(np.max(arr)), 2)
+        hist, _ = np.histogram(arr, bins=20)
+        self.metrics["speed_metrics"]["speed_histogram"] = hist.tolist()
+
+    # ----------------------------------------------------------
+    #  BUG FIX: Auto-generate pseudo ground truth
+    # ----------------------------------------------------------
+
+    def _auto_generate_ground_truth(self):
+        """
+        Будує pseudo-GT із збережених predicted треків:
+        якщо хоча б один трек у кадрі має accident_confidence >= 0.86,
+        кадр позначається як аварійний.
+        Зберігає GT у файл (якщо ground_truth_path задано) для повторного використання.
+        """
+        if not self.tracking_data["predictions"]:
+            return
+
+        annotations = {}
+        accident_confidences = {
+            r["frame"]: r["confidence"] for r in self._accident_records
+        }
+
+        for frame_num, preds in self.tracking_data["predictions"].items():
+            conf = accident_confidences.get(frame_num, 0.0)
+            bboxes   = [list(p[1]) for p in preds]
+            vehicles = [p[0] for p in preds]
+            annotations[str(frame_num)] = {
+                "vehicles": vehicles,
+                "bboxes":   bboxes,
+                "accident": conf >= 0.86,
+            }
+
+        self.ground_truth = {"frame_annotations": annotations,
+                             "auto_generated": True}
+
+        if self.ground_truth_path:
+            try:
+                os.makedirs(os.path.dirname(self.ground_truth_path), exist_ok=True)
+                with open(self.ground_truth_path, "w", encoding="utf-8") as f:
+                    json.dump(self.ground_truth, f, indent=2, ensure_ascii=False)
+                print(f"✅ Pseudo-GT збережено: {self.ground_truth_path}")
+            except Exception as e:
+                print(f"⚠️ Не вдалось зберегти pseudo-GT: {e}")
+
+    # ----------------------------------------------------------
+    #  Finalize
+    # ----------------------------------------------------------
+
+    def finalize(self) -> dict:
+        end_time = cv2.getTickCount()
         if self.start_time:
             elapsed = (end_time - self.start_time) / cv2.getTickFrequency()
-            self.metrics['processing']['processing_time_seconds'] = round(elapsed, 2)
-
-            total_frames = self.metrics['processing']['total_frames']
+            self.metrics["processing"]["processing_time_seconds"] = round(elapsed, 2)
+            total_frames = self.metrics["processing"]["total_frames"]
             if total_frames > 0:
-                self.metrics['processing']['avg_fps'] = round(total_frames / elapsed, 2)
+                self.metrics["processing"]["avg_fps"] = round(total_frames / elapsed, 2)
 
-        # Середні значення
-        if self.metrics['detection']['yolo']['avg_confidence']:
-            self.metrics['detection']['yolo']['avg_confidence'] = round(
-                float(np.mean(self.metrics['detection']['yolo']['avg_confidence'])), 3
+        # Усереднення списків → скаляри
+        def avg(lst): return round(float(np.mean(lst)), 3) if lst else 0.0
+
+        yolo_conf = self.metrics["detection"]["yolo"]["avg_confidence"]
+        if isinstance(yolo_conf, list):
+            self.metrics["detection"]["yolo"]["avg_confidence"] = avg(yolo_conf)
+
+        cnn_t = self.metrics["detection"]["cnn"]["avg_inference_time_ms"]
+        if isinstance(cnn_t, list):
+            self.metrics["detection"]["cnn"]["avg_inference_time_ms"] = avg(cnn_t)
+
+        tl = self.metrics["tracking"]["avg_track_length"]
+        if isinstance(tl, list):
+            self.metrics["tracking"]["avg_track_length"] = avg(tl)
+
+        # ── Рахуємо унікальні інциденти з реєстру ──────────────────────────────
+        # Кожен інцидент = одна реальна ДТП-подія, незалежно від тривалості.
+        unique_count = len(self._incidents)
+        self.metrics["accidents"]["unique_incidents"]         = unique_count
+        self.metrics["accidents"]["total_accidents_detected"] = unique_count
+
+        # Середня кількість авто = унікальні track_ids на інцидент (не per-frame сума)
+        if self._incidents:
+            vehicles_per = [len(inc['track_ids']) for inc in self._incidents.values()]
+            self.metrics["accidents"]["average_vehicles_per_accident"] = round(
+                float(np.mean(vehicles_per)), 2
             )
+        else:
+            av = self.metrics["accidents"]["average_vehicles_per_accident"]
+            if isinstance(av, list):
+                self.metrics["accidents"]["average_vehicles_per_accident"] = avg(av)
 
-        if self.metrics['detection']['cnn']['avg_inference_time_ms']:
-            self.metrics['detection']['cnn']['avg_inference_time_ms'] = round(
-                float(np.mean(self.metrics['detection']['cnn']['avg_inference_time_ms'])), 2
-            )
-
-        if self.metrics['tracking']['avg_track_length']:
-            self.metrics['tracking']['avg_track_length'] = round(
-                float(np.mean(self.metrics['tracking']['avg_track_length'])), 1
-            )
-
-        if self.metrics['accidents']['average_vehicles_per_accident']:
-            self.metrics['accidents']['average_vehicles_per_accident'] = round(
-                float(np.mean(self.metrics['accidents']['average_vehicles_per_accident'])), 1
-            )
-
-        # set → int (JSON-safe)
-        self.metrics['tracking']['unique_vehicles'] = len(
-            self.metrics['tracking']['unique_vehicles']
-        )
+        # set → int
+        uniq = self.metrics["tracking"]["unique_vehicles"]
+        self.metrics["tracking"]["unique_vehicles"] = len(uniq) if isinstance(uniq, set) else uniq
 
         # Detection rate
-        total_frames = self.metrics['processing']['total_frames']
-        if total_frames > 0:
-            self.metrics['performance']['detection_rate'] = round(
-                self.metrics['processing']['frames_with_detections'] / total_frames, 4
+        tf = self.metrics["processing"]["total_frames"]
+        if tf > 0:
+            self.metrics["performance"]["detection_rate"] = round(
+                self.metrics["processing"]["frames_with_detections"] / tf, 4
+            )
+            # ── ROI / CNN-skip ratios ────────────────────────────────────────
+            self.metrics["performance"]["roi_processing_ratio"] = round(
+                self._roi_frames_count / tf, 4
+            )
+            self.metrics["performance"]["cnn_skip_ratio"] = round(
+                self._cnn_skipped_count / tf, 4
             )
 
-        # ===== РОЗШИРЕНІ МЕТРИКИ =====
+        # ── Memory usage (average of samples, fallback to current) ──────────
+        self.update_memory_usage()   # фінальний зразок
+        if self._memory_samples:
+            self.metrics["performance"]["memory_usage_mb"] = round(
+                float(np.mean(self._memory_samples)), 2
+            )
+        else:
+            try:
+                self.metrics["performance"]["memory_usage_mb"] = round(
+                    self._process.memory_info().rss / (1024 * 1024), 2
+                )
+            except Exception:
+                self.metrics["performance"]["memory_usage_mb"] = 0.0
+
+        # Розширені обчислення
+        # BUG FIX: auto_generate_gt — якщо GT не завантажено, будуємо pseudo-GT
+        # з впевнених передбачень (score > 0.86). Дозволяє рахувати mAP/MOTA
+        # без ручної розмітки. Результати будуть оптимістичними, але корисними
+        # для відлагодження моделі.
+        if self.ground_truth is None and self.auto_generate_gt:
+            self._auto_generate_ground_truth()
+
         if self.ground_truth:
-            self.compute_precision_recall_f1()
             self.compute_map()
             self.compute_mota_idf1()
-            self.compute_roc_auc()
-            self.compute_precision_recall_curve()
+
+        self.compute_classification_metrics()
+        self.compute_latency_percentiles()
+        self.compute_speed_metrics()
+
+        # Зберігаємо детальні записи аварій
+        self.metrics["accident_records"] = self._accident_records
 
         return self.metrics
 
+    # ----------------------------------------------------------
+    #  Save / Print
+    # ----------------------------------------------------------
 
-    def save_to_file(self, filepath):
-        """Зберігає метрики у JSON файл"""
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(self.metrics, f, indent=2, ensure_ascii=False)
+    def save_to_file(self, filepath: str):
+        """Зберігає метрики у JSON (очищаємо списки що не серіалізуються)."""
+        def make_serializable(obj):
+            if isinstance(obj, (np.integer,)):  return int(obj)
+            if isinstance(obj, (np.floating,)): return float(obj)
+            if isinstance(obj, np.ndarray):     return obj.tolist()
+            if isinstance(obj, set):            return list(obj)
+            return obj
 
-    def save_all_plots(self, output_dir: str):
-        """Зберігає всі графіки"""
-        os.makedirs(output_dir, exist_ok=True)
-        
-        roc_path = os.path.join(output_dir, 'roc_curve.png')
-        pr_path = os.path.join(output_dir, 'precision_recall_curve.png')
-        cm_path = os.path.join(output_dir, 'confusion_matrix.png')
-        
-        self.plot_roc_curve(roc_path)
-        self.plot_precision_recall_curve(pr_path)
-        self.plot_confusion_matrix(cm_path)
+        def recurse(d):
+            if isinstance(d, dict):
+                return {k: recurse(v) for k, v in d.items()}
+            if isinstance(d, list):
+                return [recurse(i) for i in d]
+            return make_serializable(d)
+
+        safe = recurse(self.metrics)
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(safe, f, indent=2, ensure_ascii=False)
 
     def print_summary(self):
-        """Виводить зведення метрик у консоль"""
         m = self.metrics
-        
-        print("\n" + "="*70)
-        print(" "*20 + "МЕТРИКИ СИСТЕМИ")
-        print("="*70)
-        
+        BG = "\033[40m"; RESET = "\033[0m"
+
+        def _s(val, fmt=".3f"):
+            try:    return format(val, fmt)
+            except: return str(val)
+
+        print(f"\n{'='*70}")
+        print("  📊 METRICS SUMMARY")
+        print(f"{'='*70}")
+
         print("\n📹 ВІДЕО:")
-        print(f"  Шлях: {m['video_info'].get('path', 'N/A')}")
+        print(f"  Шлях:              {m['video_info'].get('path', 'N/A')}")
         print(f"  Роздільна здатність: {m['video_info'].get('resolution', 'N/A')}")
-        print(f"  FPS відео: {m['video_info'].get('fps', 'N/A')}")
-        print(f"  Тривалість: {m['video_info'].get('duration_seconds', 0):.1f} сек")
-        
+        print(f"  FPS відео:         {m['video_info'].get('fps', 'N/A')}")
+        print(f"  Тривалість:        {m['video_info'].get('duration_seconds', 0):.1f} сек")
+
         print("\n⚡ ПРОДУКТИВНІСТЬ:")
-        print(f"  Оброблено кадрів: {m['processing']['total_frames']}")
-        print(f"  Час обробки: {m['processing']['processing_time_seconds']} сек")
-        print(f"  Середній FPS обробки: {m['processing']['avg_fps']}")
-        print(f"  Кадрів з детекціями: {m['processing']['frames_with_detections']}")
-        
-        print("\n🎯 YOLO ДЕТЕКЦІЯ:")
-        print(f"  Всього детекцій: {m['detection']['yolo']['total_detections']}")
-        print(f"  Середня впевненість: {m['detection']['yolo']['avg_confidence']}")
-        if m['detection']['yolo']['detections_per_frame']:
-            avg_det = np.mean(m['detection']['yolo']['detections_per_frame'])
-            print(f"  Середньо на кадр: {avg_det:.1f}")
-        
-        print("\n🧠 CNN КЛАСИФІКАЦІЯ:")
-        print(f"  Всього інференсів: {m['detection']['cnn']['total_inferences']}")
-        print(f"  Середній час: {m['detection']['cnn']['avg_inference_time_ms']} мс")
-        print(f"  Висока впевненість (>0.9): {m['detection']['cnn']['high_confidence_predictions']}")
-        print(f"  Середня впевненість (0.7-0.9): {m['detection']['cnn']['medium_confidence_predictions']}")
-        print(f"  Низька впевненість (<0.7): {m['detection']['cnn']['low_confidence_predictions']}")
-        
+        print(f"  Оброблено кадрів:  {m['processing']['total_frames']}")
+        print(f"  Час обробки:       {m['processing']['processing_time_seconds']} сек")
+        print(f"  Середній FPS:      {m['processing']['avg_fps']}")
+        l = m.get("latency", {})
+        print(f"  Latency P50/P95/P99: {l.get('p50_ms',0)}/{l.get('p95_ms',0)}/{l.get('p99_ms',0)} мс")
+
+        print("\n🎯 YOLO:")
+        print(f"  Детекцій:          {m['detection']['yolo']['total_detections']}")
+        print(f"  Середня впевн.:    {m['detection']['yolo']['avg_confidence']}")
+        det_pf = m['detection']['yolo']['detections_per_frame']
+        print(f"  Середньо/кадр:     {np.mean(det_pf):.1f}" if det_pf else "  Середньо/кадр: N/A")
+
+        print("\n🧠 CNN:")
+        cnn = m['detection']['cnn']
+        total_inf   = cnn['total_inferences']
+        acc_trigger = cnn.get('accident_trigger_inferences', 0)
+        heartbeat   = total_inf - acc_trigger
+        print(f"  Інференсів всього: {total_inf}")
+        print(f"    з них heartbeat: {heartbeat}  (планові перевірки, score зазвичай низький)")
+        print(f"    з них accident:  {acc_trigger} (score >= 0.86 → потрапили в детектор)")
+        print(f"  Середній час:      {cnn['avg_inference_time_ms']} мс")
+        if acc_trigger > 0:
+            print(f"  High (>0.9):       {cnn['high_confidence_predictions']}")
+            print(f"  Medium (0.7-0.9):  {cnn['medium_confidence_predictions']}")
+        else:
+            print(f"  High/Medium/Low:   {cnn['high_confidence_predictions']}/"
+                  f"{cnn['medium_confidence_predictions']}/{cnn['low_confidence_predictions']}"
+                  f"  (переважно heartbeat)")
+
         print("\n🚗 ТРЕКІНГ:")
-        print(f"  Унікальних авто: {m['tracking']['unique_vehicles']}")
-        print(f"  Максимум одночасно: {m['tracking']['max_simultaneous_tracks']}")
-        print(f"  Середня довжина треку: {m['tracking']['avg_track_length']}")
-        
+        print(f"  Унікальних авто:   {m['tracking']['unique_vehicles']}")
+        print(f"  Макс одночасно:    {m['tracking']['max_simultaneous_tracks']}")
+        print(f"  Середня довжина:   {m['tracking']['avg_track_length']}")
+
         print("\n🚨 АВАРІЇ:")
-        print(f"  Виявлено аварій: {m['accidents']['total_accidents_detected']}")
-        print(f"  Попереджень про зіткнення: {m['accidents']['collision_warnings']}")
-        print(f"  Раптових зупинок: {m['accidents']['sudden_stops']}")
-        print(f"  Відфільтровано хибних: {m['accidents']['false_positives_filtered']}")
-        if m['accidents']['average_vehicles_per_accident']:
-            print(f"  Середньо авто в аварії: {m['accidents']['average_vehicles_per_accident']}")
-        
-        # ===== РОЗШИРЕНІ МЕТРИКИ =====
-        if m['evaluation']['precision'] > 0 or m['evaluation']['recall'] > 0:
-            print("\n📊 ЯКІСТЬ ДЕТЕКЦІЇ:")
-            print(f"  Precision: {m['evaluation']['precision']:.4f}")
-            print(f"  Recall: {m['evaluation']['recall']:.4f}")
-            print(f"  F1-Score: {m['evaluation']['f1_score']:.4f}")
-            print(f"  Accuracy: {m['evaluation']['accuracy']:.4f}")
-            print(f"  mAP: {m['evaluation']['mAP']:.4f}")
-            print(f"  mAP@0.5: {m['evaluation']['mAP_50']:.4f}")
-            print(f"  mAP@0.75: {m['evaluation']['mAP_75']:.4f}")
-            
-            print("\n  Confusion Matrix:")
-            cm = m['evaluation']['confusion_matrix']
-            print(f"    True Positives:  {cm['true_positives']}")
-            print(f"    False Positives: {cm['false_positives']}")
-            print(f"    True Negatives:  {cm['true_negatives']}")
-            print(f"    False Negatives: {cm['false_negatives']}")
-        
-        if m['tracking_evaluation']['MOTA'] != 0:
-            print("\n🎯 ЯКІСТЬ ТРЕКІНГУ:")
-            print(f"  MOTA: {m['tracking_evaluation']['MOTA']:.4f}")
-            print(f"  IDF1: {m['tracking_evaluation']['IDF1']:.4f}")
-            print(f"  ID Switches: {m['tracking_evaluation']['id_switches']}")
-            print(f"  False Positives: {m['tracking_evaluation'].get('false_positives', 0)}")
-            print(f"  False Negatives: {m['tracking_evaluation'].get('false_negatives', 0)}")
-        
-        if m['roc_data']['auc'] > 0:
-            print("\n📈 ROC-AUC:")
-            print(f"  AUC Score: {m['roc_data']['auc']:.4f}")
-            print(f"  Average Precision: {m['precision_recall_data']['average_precision']:.4f}")
-        
-        print("\n" + "="*70 + "\n")
-              
+        unique_inc = m['accidents'].get('unique_incidents', 0)
+        print(f"  Унікальних ДТП:    {unique_inc}")
+        for iid, inc in (self._incidents.items() if self._incidents else {}.items()):
+            tids = sorted(inc['track_ids'])
+            dur  = inc['last_frame'] - inc['start_frame']
+            print(f"    ДТП #{iid+1}: кадри {inc['start_frame']}-{inc['last_frame']} "
+                  f"({dur} кадрів) | авто IDs={tids} | max_conf={inc['max_conf']:.3f} | {inc['severity']}")
+        print(f"  Середньо авто/ДТП: {m['accidents']['average_vehicles_per_accident']}")
+        cw = m['accidents']['collision_warnings']
+        ss = m['accidents']['sudden_stops']
+        if cw: print(f"  Попереджень TTC:   {cw}")
+        if ss: print(f"  Раптових зупинок:  {ss}")
+
+        ev = m.get("evaluation", {})
+        print("\n📊 ЯКІСТЬ ДЕТЕКЦІЇ (при threshold=0.5):")
+        print(f"  Precision:         {ev.get('precision', 0):.4f}")
+        print(f"  Recall:            {ev.get('recall', 0):.4f}")
+        print(f"  F1-Score:          {ev.get('f1_score', 0):.4f}")
+        print(f"  Accuracy:          {ev.get('accuracy', 0):.4f}")
+        print(f"  ROC-AUC:           {m['roc_data'].get('auc', 0):.4f}")
+        print(f"  PR-AUC (AP):       {m['precision_recall_data'].get('average_precision', 0):.4f}")
+        print(f"  mAP:               {ev.get('mAP', 0):.4f}")
+        print(f"  mAP@0.5:           {ev.get('mAP_50', 0):.4f}")
+        print(f"  mAP@0.75:          {ev.get('mAP_75', 0):.4f}")
+
+        te = m.get("tracking_evaluation", {})
+        print("\n🎯 ТРЕКІНГ (MOTA/IDF1):")
+        print(f"  MOTA:              {te.get('MOTA', 0):.4f}")
+        print(f"  IDF1:              {te.get('IDF1', 0):.4f}")
+        print(f"  ID Switches:       {te.get('id_switches', 0)}")
+        print(f"  False Positives:   {te.get('false_positives', 0)}")
+        print(f"  False Negatives:   {te.get('false_negatives', 0)}")
+
+        lstm = m.get("lstm", {})
+        if lstm.get("enabled"):
+            avg_probs = lstm.get("avg_accident_prob", [])
+            print("\n🤖 LSTM ПЕРЕДБАЧЕННЯ:")
+            print(f"  Статус:            enabled")
+            print(f"  Середня ймовірність: {np.mean(avg_probs):.4f}" if avg_probs else "  Дані відсутні")
+
+        sm = m.get("speed_metrics", {})
+        if sm.get("avg_speed_px_per_frame", 0) > 0:
+            print("\n🏎 ШВИДКІСТЬ АВТО:")
+            print(f"  Середня:           {sm['avg_speed_px_per_frame']} пкс/кадр")
+            print(f"  Максимальна:       {sm['max_speed_px_per_frame']} пкс/кадр")
+
+        print(f"\n{'='*70}\n")
+
+    # ----------------------------------------------------------
+    #  NEW: save_all_plots — зберігає всі графіки
+    # ----------------------------------------------------------
+
+    def save_all_plots(self, output_dir: str):
+        """Генерує і зберігає всі графіки у output_dir."""
+        os.makedirs(output_dir, exist_ok=True)
+
+        DARK_BG   = "#000000"
+        PANEL_BG  = "#000000"
+        GRID_CLR  = "#21262d"
+        TEXT_CLR  = "#c9d1d9"
+        BLUE      = "#58a6ff"
+        GREEN     = "#3fb950"
+        RED       = "#f78166"
+        ORANGE    = "#ffa657"
+        PURPLE    = "#d2a8ff"
+
+        def _style_ax(ax):
+            ax.set_facecolor(PANEL_BG)
+            ax.tick_params(colors=TEXT_CLR, labelsize=8)
+            for sp in ax.spines.values():
+                sp.set_edgecolor(GRID_CLR)
+            ax.grid(color=GRID_CLR, lw=0.6, alpha=0.7)
+            ax.title.set_color(TEXT_CLR)
+            ax.xaxis.label.set_color(TEXT_CLR)
+            ax.yaxis.label.set_color(TEXT_CLR)
+
+        # ── 1. Performance Dashboard ──────────────────────────────
+
+        fig = plt.figure(figsize=(18, 10), facecolor=DARK_BG)
+        fig.suptitle("System Performance Dashboard", color="white",
+                     fontsize=14, fontweight="bold", y=0.98)
+        gs = gridspec.GridSpec(2, 3, hspace=0.45, wspace=0.35)
+
+        # 1a. Frame time
+        ax = fig.add_subplot(gs[0, 0])
+        _style_ax(ax)
+        times = self.metrics["performance"]["frame_times_ms"]
+        if times:
+            ax.plot(times, color=BLUE, lw=0.8, alpha=0.7, label="Frame time")
+            lat = self.metrics.get("latency", {})
+            for pct, val, clr in [("P50", lat.get("p50_ms", 0), GREEN),
+                                   ("P95", lat.get("p95_ms", 0), ORANGE),
+                                   ("P99", lat.get("p99_ms", 0), RED)]:
+                ax.axhline(val, color=clr, lw=1.2, ls="--", label=f"{pct}={val:.1f}ms")
+            ax.legend(fontsize=7, framealpha=0, labelcolor=TEXT_CLR)
+        ax.set_title("Frame Processing Time")
+        ax.set_xlabel("Frame"); ax.set_ylabel("ms")
+
+        # 1b. Detections per frame
+        ax = fig.add_subplot(gs[0, 1])
+        _style_ax(ax)
+        dpf = self.metrics["detection"]["yolo"]["detections_per_frame"]
+        if dpf:
+            ax.plot(dpf, color=GREEN, lw=1.0, alpha=0.8)
+            ax.fill_between(range(len(dpf)), dpf, alpha=0.2, color=GREEN)
+        ax.set_title("YOLO Detections / Frame")
+        ax.set_xlabel("Frame"); ax.set_ylabel("Count")
+
+        # 1c. Tracks per frame
+        ax = fig.add_subplot(gs[0, 2])
+        _style_ax(ax)
+        tpf = self.metrics["tracking"].get("tracks_per_frame", [])
+        if tpf:
+            ax.plot(tpf, color=PURPLE, lw=1.0)
+            ax.fill_between(range(len(tpf)), tpf, alpha=0.2, color=PURPLE)
+        ax.set_title("Active Tracks / Frame")
+        ax.set_xlabel("Frame"); ax.set_ylabel("Count")
+
+        # 1d. CNN score histogram
+        ax = fig.add_subplot(gs[1, 0])
+        _style_ax(ax)
+        scores_hist = self.metrics["detection"]["cnn"]["scores_history"]
+        if scores_hist:
+            ax.hist(scores_hist, bins=40, color=BLUE, alpha=0.8, edgecolor=DARK_BG, lw=0.3)
+            ax.axvline(0.5, color=ORANGE, lw=1.5, ls="--", label="0.5")
+            ax.axvline(0.9, color=RED, lw=1.5, ls="--", label="0.9")
+            ax.legend(fontsize=7, framealpha=0, labelcolor=TEXT_CLR)
+        ax.set_title("CNN Score Distribution")
+        ax.set_xlabel("Score"); ax.set_ylabel("Count")
+
+        # 1e. Accident timeline
+        ax = fig.add_subplot(gs[1, 1])
+        _style_ax(ax)
+        total_f = self.metrics["processing"]["total_frames"]
+        acc_frames = self.metrics["accidents"]["accidents_by_frame"]
+        if total_f > 0:
+            timeline = np.zeros(total_f)
+            for f in acc_frames:
+                if 0 < f <= total_f:
+                    timeline[f - 1] = 1
+            ax.fill_between(range(total_f), timeline, color=RED, alpha=0.8, step="mid")
+        ax.set_title("Accident Timeline")
+        ax.set_xlabel("Frame"); ax.set_ylabel("Accident")
+
+        # 1f. Speed histogram
+        ax = fig.add_subplot(gs[1, 2])
+        _style_ax(ax)
+        speed_hist = self.metrics["speed_metrics"].get("speed_histogram", [])
+        if speed_hist:
+            ax.bar(range(len(speed_hist)), speed_hist, color=ORANGE, alpha=0.8, width=0.8)
+        ax.set_title("Vehicle Speed Distribution")
+        ax.set_xlabel("Speed bucket"); ax.set_ylabel("Count")
+
+        plt.savefig(os.path.join(output_dir, "performance_dashboard.png"),
+                    dpi=150, bbox_inches="tight", facecolor=DARK_BG)
+        plt.close(fig)
+        print("  📊 performance_dashboard.png збережено")
+
+        # ── 2. ROC + Precision-Recall ─────────────────────────────
+
+        fig, axes = plt.subplots(1, 2, figsize=(14, 6), facecolor=DARK_BG)
+        fig.suptitle("Detection Quality — ROC & PR Curves", color="white",
+                     fontsize=13, fontweight="bold")
+
+        # ROC
+        ax = axes[0]; _style_ax(ax)
+        fpr_v = self.metrics["roc_data"]["fpr"]
+        tpr_v = self.metrics["roc_data"]["tpr"]
+        roc_a = self.metrics["roc_data"]["auc"]
+        if fpr_v and tpr_v:
+            ax.plot(fpr_v, tpr_v, color=BLUE, lw=2, label=f"ROC (AUC={roc_a:.3f})")
+            ax.fill_between(fpr_v, tpr_v, alpha=0.15, color=BLUE)
+        ax.plot([0, 1], [0, 1], color=GRID_CLR, lw=1, ls="--", label="Random")
+        ax.legend(fontsize=9, framealpha=0, labelcolor=TEXT_CLR)
+        ax.set_title("ROC Curve")
+        ax.set_xlabel("False Positive Rate"); ax.set_ylabel("True Positive Rate")
+
+        # PR
+        ax = axes[1]; _style_ax(ax)
+        pr_p = self.metrics["precision_recall_data"]["precision"]
+        pr_r = self.metrics["precision_recall_data"]["recall"]
+        pr_ap = self.metrics["precision_recall_data"]["average_precision"]
+        if pr_p and pr_r:
+            ax.plot(pr_r, pr_p, color=GREEN, lw=2, label=f"PR (AP={pr_ap:.3f})")
+            ax.fill_between(pr_r, pr_p, alpha=0.15, color=GREEN)
+        ax.legend(fontsize=9, framealpha=0, labelcolor=TEXT_CLR)
+        ax.set_title("Precision-Recall Curve")
+        ax.set_xlabel("Recall"); ax.set_ylabel("Precision")
+
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
+        plt.savefig(os.path.join(output_dir, "roc_pr_curves.png"),
+                    dpi=150, bbox_inches="tight", facecolor=DARK_BG)
+        plt.close(fig)
+        print("  📊 roc_pr_curves.png збережено")
+
+        # ── 3. LSTM Dashboard ─────────────────────────────────────
+
+        lstm = self.metrics.get("lstm", {})
+        if lstm.get("enabled"):
+            fig, axes = plt.subplots(1, 3, figsize=(15, 5), facecolor=DARK_BG)
+            fig.suptitle("LSTM Accident Prediction", color="white",
+                         fontsize=13, fontweight="bold")
+
+            for ax, data, title, clr in [
+                (axes[0], lstm.get("avg_accident_prob", []),  "Avg Accident Prob / Frame", ORANGE),
+                (axes[1], lstm.get("max_accident_prob", []),  "Max Accident Prob / Frame", RED),
+                (axes[2], lstm.get("high_risk_tracks_count", []), "High-Risk Tracks / Frame", PURPLE),
+            ]:
+                _style_ax(ax)
+                if data:
+                    ax.plot(data, color=clr, lw=1.2)
+                    ax.fill_between(range(len(data)), data, alpha=0.2, color=clr)
+                    if title != "High-Risk Tracks / Frame":
+                        ax.axhline(0.7, color="white", lw=1, ls="--", alpha=0.6, label="Threshold 0.7")
+                        ax.legend(fontsize=7, framealpha=0, labelcolor=TEXT_CLR)
+                ax.set_title(title)
+                ax.set_xlabel("Frame")
+
+            plt.tight_layout(rect=[0, 0, 1, 0.95])
+            plt.savefig(os.path.join(output_dir, "lstm_predictions.png"),
+                        dpi=150, bbox_inches="tight", facecolor=DARK_BG)
+            plt.close(fig)
+            print("  📊 lstm_predictions.png збережено")
+
+        # ── 4. Latency Percentile Bar ─────────────────────────────
+
+        lat = self.metrics.get("latency", {})
+        if any(lat.get(k, 0) > 0 for k in ["p50_ms", "p90_ms", "p95_ms", "p99_ms"]):
+            fig, axes = plt.subplots(1, 2, figsize=(12, 5), facecolor=DARK_BG)
+            fig.suptitle("Latency Analysis", color="white",
+                         fontsize=13, fontweight="bold")
+
+            # Percentile bars
+            ax = axes[0]; _style_ax(ax)
+            labels_l  = ["P50", "P90", "P95", "P99"]
+            values_l  = [lat.get("p50_ms", 0), lat.get("p90_ms", 0),
+                         lat.get("p95_ms", 0), lat.get("p99_ms", 0)]
+            colors_l  = [GREEN, BLUE, ORANGE, RED]
+            bars = ax.bar(labels_l, values_l, color=colors_l, alpha=0.85, width=0.6)
+            for bar, val in zip(bars, values_l):
+                ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
+                        f"{val:.1f}ms", ha="center", color=TEXT_CLR, fontsize=9)
+            ax.set_title("Frame Time Percentiles")
+            ax.set_ylabel("ms")
+
+            # Rolling avg FPS
+            ax = axes[1]; _style_ax(ax)
+            times = self.metrics["performance"]["frame_times_ms"]
+            if len(times) > 10:
+                rolling = np.convolve(
+                    [1000 / max(t, 1) for t in times],
+                    np.ones(30) / 30, mode="valid"
+                )
+                ax.plot(rolling, color=BLUE, lw=1.2)
+                ax.axhline(self.metrics["video_info"].get("fps", 25),
+                           color=GREEN, lw=1, ls="--", label="Video FPS")
+                ax.legend(fontsize=8, framealpha=0, labelcolor=TEXT_CLR)
+            ax.set_title("Rolling Avg Processing FPS")
+            ax.set_xlabel("Frame"); ax.set_ylabel("FPS")
+
+            plt.tight_layout(rect=[0, 0, 1, 0.95])
+            plt.savefig(os.path.join(output_dir, "latency_analysis.png"),
+                        dpi=150, bbox_inches="tight", facecolor=DARK_BG)
+            plt.close(fig)
+            print("  📊 latency_analysis.png збережено")
+
+        # ── 5. Evaluation Summary (bar chart) ─────────────────────
+
+        ev = self.metrics.get("evaluation", {})
+        te = self.metrics.get("tracking_evaluation", {})
+
+        fig, axes = plt.subplots(1, 2, figsize=(14, 6), facecolor=DARK_BG)
+        fig.suptitle("Evaluation Metrics Summary", color="white",
+                     fontsize=13, fontweight="bold")
+
+        # Detection metrics
+        ax = axes[0]; _style_ax(ax)
+        det_names  = ["Precision", "Recall", "F1", "Accuracy",
+                      "ROC-AUC", "PR-AUC", "mAP@0.5", "mAP@0.75"]
+        det_vals   = [
+            ev.get("precision", 0),  ev.get("recall", 0),
+            ev.get("f1_score", 0),   ev.get("accuracy", 0),
+            self.metrics["roc_data"].get("auc", 0),
+            self.metrics["precision_recall_data"].get("average_precision", 0),
+            ev.get("mAP_50", 0),     ev.get("mAP_75", 0),
+        ]
+        bar_colors = [GREEN if v >= 0.7 else (ORANGE if v >= 0.5 else RED)
+                      for v in det_vals]
+        bars = ax.barh(det_names, det_vals, color=bar_colors, alpha=0.85)
+        for bar, val in zip(bars, det_vals):
+            ax.text(max(val, 0.02), bar.get_y() + bar.get_height()/2,
+                    f"{val:.3f}", va="center", color=TEXT_CLR, fontsize=8)
+        ax.set_xlim(0, 1.15)
+        ax.set_title("Detection & Classification")
+        ax.set_xlabel("Score")
+
+        # Tracking metrics (MOTA/IDF1)
+        ax = axes[1]; _style_ax(ax)
+        tr_names = ["MOTA", "IDF1"]
+        tr_vals  = [te.get("MOTA", 0), te.get("IDF1", 0)]
+        tr_clrs  = [GREEN if v >= 0.6 else (ORANGE if v >= 0.3 else RED)
+                    for v in tr_vals]
+        bars2 = ax.bar(tr_names, tr_vals, color=tr_clrs, alpha=0.85, width=0.4)
+        for bar, val in zip(bars2, tr_vals):
+            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+                    f"{val:.3f}", ha="center", color=TEXT_CLR, fontsize=10)
+        ax.set_ylim(0, 1.15)
+        ax.set_title("Tracking Quality")
+        ax.set_ylabel("Score")
+
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
+        plt.savefig(os.path.join(output_dir, "evaluation_summary.png"),
+                    dpi=150, bbox_inches="tight", facecolor=DARK_BG)
+        plt.close(fig)
+        print("  📊 evaluation_summary.png збережено")
+
+        print(f"\n  ✅ Всі графіки збережено у: {output_dir}")

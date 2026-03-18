@@ -7,7 +7,7 @@ def show_frame(frame):
 
     cv2.namedWindow("test",cv2.WINDOW_NORMAL)
     cv2.setMouseCallback("test", mouse)
-    cv2.resizeWindow("test",1920,1080)
+    cv2.resizeWindow("test", 1280,1024)
 
     while True:
         cv2.imshow("test", frame)
@@ -18,7 +18,7 @@ def show_frame(frame):
 
 
 # --- Load image correctly ---
-image_path = r"D:\project\bachelor\model\src\image_of_frame\frame3.png"
+image_path = r"E:\personalproject\bachelor\data\video\fragments\frame_00002.jpg"
 frame = cv2.imread(image_path)
 
 if frame is None:

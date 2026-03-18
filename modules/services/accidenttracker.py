@@ -4,6 +4,8 @@ import os
 from datetime import datetime
 from typing import List, Tuple, Dict,Union
 from collections import defaultdict, deque
+from modules.config.config import Config
+
 
 class AccidentStateTracker:
     """
@@ -17,7 +19,7 @@ class AccidentStateTracker:
         self.confirmed_accidents = {}
         
         # Час життя підтвердженої аварії (кількість кадрів)
-        self.accident_lifetime = 90  # ~3 секунди при 30 FPS
+        self.accident_lifetime = Config.ACCIDENT_LIFETIME  # ~3 секунди при 30 FPS
         
         # Мінімальна кількість високих скорів для підтвердження
         self.confirmation_threshold = 3
@@ -32,26 +34,50 @@ class AccidentStateTracker:
             return False
         return True
     
-    def should_confirm_accident(self, track_id: int, current_score: float) -> bool:
+    def should_confirm_accident(
+        self,
+        track_id:      int,
+        current_score: float,
+        lstm_risk:     float = 0.0,
+        is_kinematic:  bool  = False,
+    ) -> bool:
         """
-        Визначає чи потрібно підтвердити аварію на основі історії скорів
-        Логіка: не один високий скор, а стабільно високі значення
+        Визначає чи потрібно підтвердити аварію на основі CNN-скор-історії.
+
+        ПРИНЦИП: Кінематика (TTC/cosine/distance) — PRIMARY gate.
+        LSTM — лише МОДИФІКАТОР порогів коли кінематика ВЖЕ погодилась.
+
+        Логіка порогів:
+        - is_kinematic=False: суворі пороги avg>0.88, min>0.78. LSTM не знижує.
+        - is_kinematic=True, lstm_risk>=0.5: зниження до -0.12 (обидві моделі згодні)
+        - is_kinematic=True, lstm_risk<0.5: avg>0.85, min>0.75 (тільки кінематика)
         """
         history = list(self.cnn_score_history[track_id])
-        
+
         if len(history) < self.confirmation_threshold:
             return False
-        
-        # Беремо останні N скорів
+
         recent_scores = history[-self.confirmation_threshold:]
-        
-        # Підтверджуємо якщо:
-        # 1. Середній скор > 0.85
-        # 2. Мінімальний скор > 0.75
         avg_score = sum(recent_scores) / len(recent_scores)
         min_score = min(recent_scores)
-        
-        return avg_score > 0.85 and min_score > 0.75
+
+        if not is_kinematic:
+            # Без кінематики CNN мусить бути впевнений самостійно.
+            # LSTM не знижує пороги — без TTC/cosine підтвердження
+            # LSTM alone не може підтвердити аварію.
+            avg_thresh = 0.88
+            min_thresh = 0.78
+        elif lstm_risk >= 0.5:
+            # Обидві моделі погодились: кінематика + LSTM
+            reduction  = min(lstm_risk - 0.5, 0.5) * 0.24  # max -0.12
+            avg_thresh = 0.88 - reduction
+            min_thresh = 0.78 - reduction
+        else:
+            # Тільки кінематика, LSTM не впевнений
+            avg_thresh = 0.85
+            min_thresh = 0.75
+
+        return avg_score > avg_thresh and min_score > min_thresh
     
     def confirm_accident(self, track_id: int, frame_number: int):
         """Підтверджує аварію для track_id"""

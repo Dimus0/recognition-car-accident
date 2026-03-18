@@ -1,0 +1,79 @@
+НОВІ ПРОСУНУТІ ФІЛЬТРИ (dense-traffic edition)
+-----------------------------------------------
+
+Проблема стандартних фільтрів TTC + cosine_distance у щільному трафіку:
+  • Стандартний TTC = distance / closing_speed — реагує на будь-яке зближення.
+    У заторі десятки авто постійно «зближуються» → масові хибні спрацьовування.
+  • Стандартний cosine_distance у DeepSort — метрика зовнішності (ReID), не руху.
+    Вона не враховує вектори швидкості і не фільтрує паралельний рух у смузі.
+
+Реалізовані просунуті фільтри
+------------------------------
+
+1. AdaptiveTTC  (``_adaptive_ttc_threshold``)
+   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   Поріг TTC адаптується до локальної щільності транспорту.
+   При щільності ≥ HIGH_DENSITY_THRESHOLD поріг ділиться на density_divisor,
+   що зменшує чутливість і прибирає шум від заторів.
+   Формула:
+       adaptive_thresh = base_thresh / max(1.0, density * density_divisor)
+   де density = кількість авто в радіусі DENSITY_RADIUS px навколо пари.
+
+2. CosineConvergence  (``_cosine_convergence``)
+   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   Вимірює, наскільки пряму траєкторію зближення мають дві машини.
+   Використовує проекцію відносної швидкості на вектор розділення:
+       cos_conv = dot(rel_vel_AB, unit(pos_B - pos_A))
+   де rel_vel_AB = vel_A - vel_B  (швидкість A відносно B, у системі відліку B).
+   Діапазон [-1, 1]:
+       +1  → пряме зіткнення лоб в лоб
+        0  → перпендикулярне схрещення (косий удар)
+       -1  → розбіжність
+   Фільтр: пара позначається ризиковою ТІЛЬКИ якщо cos_conv > MIN_COSINE_CONVERGENCE.
+
+3. DirectionSimilarity  (``_direction_similarity``)
+   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   Косинусна подібність між векторами швидкостей (не позицій).
+       cos_dir = dot(vel_A, vel_B) / (|vel_A| * |vel_B|)
+   Якщо cos_dir > SAME_DIRECTION_THRESHOLD (≈ 0.85, тобто кут < 32°),
+   обидва авто їдуть практично в одну сторону → вони в одній або сусідній смузі.
+   Такі пари ВИКЛЮЧАЮТЬСЯ як «потокові сусіди», навіть якщо близько розташовані.
+
+4. MinRelativeSpeed  (``_relative_speed_too_low``)
+   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   У заторі всі авто майже стоять. TTC = distance/0.001 → хибно великий або нескінченний.
+   Якщо |rel_vel| < MIN_RELATIVE_SPEED_PX_FRAME (пікс/кадр), пара ігнорується.
+   Запобігає нестабільним TTC від помилок детектора.
+
+5. EMA-згладжений TTC  (``_get_smoothed_ttc``)
+   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   Сировий TTC скаче кадр-до-кадру через джиттер bbox.
+   Застосовуємо Exponential Moving Average (α = TTC_EMA_ALPHA):
+       ttc_smooth[k] = α * ttc_raw[k] + (1-α) * ttc_smooth[k-1]
+   Стабілізує сигнал і усуває одиночні хибні спрацьовування.
+   Кеш EMA зберігається в ``_ttc_ema`` з автоочисткою неактивних пар.
+
+6. CompositeRiskScore  (``_composite_risk_score``)
+   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   Об'єднує TTC, CosineConvergence та відстань у єдиний скаляр [0, 1]:
+       score = w_ttc   * clip(1 - ttc/thresh, 0, 1)
+             + w_cos   * clip(cos_conv, 0, 1)
+             + w_dist  * clip(1 - dist/collision_dist, 0, 1)
+   де w_ttc + w_cos + w_dist = 1.0.
+   Пара додається до risky_ids ТІЛЬКИ якщо score > COMPOSITE_RISK_MIN.
+   Дозволяє м'яке гейтування CNN-інференсу замість жорсткого бінарного фільтра.
+
+Параметри що передаються в __init__
+-------------------------------------
+  collision_ttc_threshold    float  : базовий TTC поріг (с або кадри)
+  sudden_stop_threshold      float  : відносне падіння швидкості для раптової зупинки
+  min_speed_for_stop         float  : мінімальна швидкість перед зупинкою
+  min_cosine_convergence     float  : мінімальний cos_conv щоб визнати зближення (default 0.15)
+  same_direction_threshold   float  : cos_dir вище якого пара вважається попутною (default 0.85)
+  min_relative_speed         float  : мінімальна відносна швидкість пікс/кадр (default 0.8)
+  ttc_ema_alpha              float  : коефіцієнт EMA для згладжування TTC (default 0.4)
+  density_radius             int    : радіус (пікс) для підрахунку локальної щільності (default 220)
+  density_divisor            float  : ділільник порогу TTC при щільності > 1 (default 0.25)
+  composite_risk_min         float  : мінімальний composite score для додавання до risky (default 0.35)
+  composite_weights          tuple  : (w_ttc, w_cos, w_dist) сума = 1.0 (default (0.5, 0.3, 0.2))
+"""

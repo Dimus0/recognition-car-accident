@@ -1,4 +1,5 @@
 env/
+.env
 article/
 dataset/
 text.txt
@@ -13,6 +14,14 @@ data/
 *.pdf
 *.mp4
 *.pt
+*.pkl
 model/weights/
 *__pycache__/
 *.pth
+.vscode/
+.idea/
+*.png
+*.jpg
+*.jpeg
+*.json
+*.csv
