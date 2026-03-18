@@ -14,6 +14,7 @@ data/
 *.pdf
 *.mp4
 *.pt
+*.pkl
 model/weights/
 *__pycache__/
 *.pth

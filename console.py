@@ -137,6 +137,7 @@ def accident_detection(input_video):
     cnn_results_cache = {}
     crop_buffer: dict = defaultdict(lambda: deque(maxlen=Config.CNN_TEMPORAL_FRAMES))
     score_history: dict = defaultdict(lambda: deque(maxlen=Config.HEARTBEAT_HISTORY_LEN))
+    
     notified_accidents: set = set()
     notification_threads: list = []
 
@@ -579,7 +580,7 @@ def accident_detection(input_video):
 
         if motion_lstm:
             motion_lstm.cleanup(ids)
-            
+
         lost_ids = set(crop_buffer.keys()) - set(ids)
         for lid in lost_ids:
             crop_buffer.pop(lid, None)

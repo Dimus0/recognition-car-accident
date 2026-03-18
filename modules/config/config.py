@@ -23,7 +23,6 @@ class Config:
     # ------------------ 2. MODELS ------------------
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    # YOLO_MODEL_PATH = os.path.join(BASE_DIR, "model", "weights", "yolov8-fine-tuning.pt")
     YOLO_MODEL_PATH = os.path.join(BASE_DIR, "model", "weights", "yolov8-50epochs.pt")
     # YOLO_MODEL_PATH = os.path.join(BASE_DIR, "model", "weights", "yolov11.pt")
     # CNN_WEIGHTS_PATH = os.path.join(BASE_DIR, "model", "weights", "accident_cnn_model.pth")
@@ -38,7 +37,7 @@ class Config:
     VIDEO_BUFFER_SECONDS    = 4.0  # Буфер до/після аварії               # було 2
 
     # ------------------ 4. MOTION LSTM ------------------
-    LSTM_OBS_LEN            = 10 # треба тест на 10
+    LSTM_OBS_LEN            = 20 # треба тест на 10
     LSTM_PRED_LEN           = 30
     LSTM_HIDDEN             = 128
     LSTM_LAYERS             = 2
@@ -51,7 +50,7 @@ class Config:
     # --------------------- ResNet50 ------------------
 
     RESNET50_NUM_CLASSES  = 2
-    RESNET50_DROPOUT      = 0.4
+    RESNET50_DROPOUT      = 0.3
     RESNET50_ACCIDENT_IDX = 0
     CNN_CONTEXT_PADDING = 120
     CNN_SAVE_CROP_THRESH = 0.80
