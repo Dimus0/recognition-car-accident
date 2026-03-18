@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-import torch
 from torchvision import transforms
 import logging
 import os
@@ -117,6 +116,7 @@ def accident_detection(input_video):
 
     metrics_tracker.set_video_info(width, height, fps, total_frames, input_video)
     metrics_tracker.start_processing()
+    metrics_tracker.set_roi_ratio(ROI_POLYGON,width,height)
 
     output_path = os.path.join(Config.OUTPUT_DIR, "result.mp4")
     out = cv2.VideoWriter(output_path, 
@@ -134,7 +134,6 @@ def accident_detection(input_video):
 
     frame_count = 0
     cnn_results_cache = {}
-
     notified_accidents: set = set()
     notification_threads: list = []
 
@@ -266,7 +265,7 @@ def accident_detection(input_video):
                 )
 
         # Підсумковий risky set: кінематика ∪ LSTM
-        collision_risky_ids_total = collision_risky_ids_kin | lstm_high_risk_ids
+        collision_risky_ids_total = collision_risky_ids_kin
 
         crops_to_process, ids_to_process, box_map_for_cnn = [], [], []
         sudden_stop_cache: dict = {}
@@ -280,7 +279,7 @@ def accident_detection(input_video):
             should_run = (
                 accident_state.is_accident_active(tid, frame_count)
                 or tid in collision_risky_ids_total
-                or tid in lstm_risk_ids              # ← LSTM виявив ризик
+                # or tid in lstm_risk_ids              # ← LSTM виявив ризик
                 or is_sudden_stop
                 or frame_count % Config.HEARTBEAT_RATE == 0
             )
@@ -315,6 +314,13 @@ def accident_detection(input_video):
                 lstm_risk = lstm_risk_scores.get(tid,0.0)
                 lstm_boost = (lstm_risk ** 2) * 0.25 * score
                 eff_score = min(1.0, score + lstm_boost)
+                is_kinematic = tid in collision_risky_ids_kin
+
+                if is_kinematic:
+                    lstm_boost = (lstm_risk ** 2) * 0.25 * score
+                else:
+                    lstm_boost = 0.0
+                eff_score = min(1.0, score + lstm_boost)
 
                 if score >= Config.CNN_SAVE_CROP_THRESH:
                     from datetime import datetime as _dt
@@ -329,6 +335,11 @@ def accident_detection(input_video):
                 accident_state.update_score(tid, eff_score, frame_count)
                 is_already_confirmed = accident_state.is_confirmed_accident(tid)
 
+                should_confirm = accident_state.should_confirm_accident(
+                    tid, eff_score,
+                    lstm_risk=lstm_risk,
+                    is_kinematic=is_kinematic,   # LSTM reduction тільки якщо кінематика згодна
+                )
                 should_confirm = accident_state.should_confirm_accident(tid, eff_score,lstm_risk=lstm_risk)
                 is_kinematic = tid in collision_risky_ids_kin
                 is_lstm_flag = tid in lstm_high_risk_ids or tid in lstm_risk_ids
