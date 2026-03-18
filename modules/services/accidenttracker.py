@@ -36,21 +36,21 @@ class AccidentStateTracker:
     
     def should_confirm_accident(
         self,
-        track_id:    int,
+        track_id:      int,
         current_score: float,
-        lstm_risk:   float = 0.0,
+        lstm_risk:     float = 0.0,
+        is_kinematic:  bool  = False,
     ) -> bool:
         """
-        Визначає чи потрібно підтвердити аварію на основі історії CNN-скорів.
-        Якщо LSTM також вказує на ризик — пороги знижуються, бо дві незалежні
-        моделі погоджуються між собою.
+        Визначає чи потрібно підтвердити аварію на основі CNN-скор-історії.
 
-        Адаптивні пороги залежно від lstm_risk
-        ----------------------------------------
-        lstm_risk = 0.0  → avg > 0.85, min > 0.75  (базовий, суворий)
-        lstm_risk = 0.5  → avg > 0.78, min > 0.68
-        lstm_risk = 0.8  → avg > 0.72, min > 0.62
-        lstm_risk ≥ 1.0  → avg > 0.68, min > 0.58  (максимальне зниження)
+        ПРИНЦИП: Кінематика (TTC/cosine/distance) — PRIMARY gate.
+        LSTM — лише МОДИФІКАТОР порогів коли кінематика ВЖЕ погодилась.
+
+        Логіка порогів:
+        - is_kinematic=False: суворі пороги avg>0.88, min>0.78. LSTM не знижує.
+        - is_kinematic=True, lstm_risk>=0.5: зниження до -0.12 (обидві моделі згодні)
+        - is_kinematic=True, lstm_risk<0.5: avg>0.85, min>0.75 (тільки кінематика)
         """
         history = list(self.cnn_score_history[track_id])
 
@@ -61,11 +61,21 @@ class AccidentStateTracker:
         avg_score = sum(recent_scores) / len(recent_scores)
         min_score = min(recent_scores)
 
-        # LSTM-aware пороги: кожен 0.1 ризику знижує поріг на 0.017 / 0.017
-        # Максимальне зниження обмежено щоб уникнути хибних спрацьовувань
-        reduction   = min(lstm_risk, 1.0) * 0.17
-        avg_thresh  = 0.85 - reduction
-        min_thresh  = 0.75 - reduction
+        if not is_kinematic:
+            # Без кінематики CNN мусить бути впевнений самостійно.
+            # LSTM не знижує пороги — без TTC/cosine підтвердження
+            # LSTM alone не може підтвердити аварію.
+            avg_thresh = 0.88
+            min_thresh = 0.78
+        elif lstm_risk >= 0.5:
+            # Обидві моделі погодились: кінематика + LSTM
+            reduction  = min(lstm_risk - 0.5, 0.5) * 0.24  # max -0.12
+            avg_thresh = 0.88 - reduction
+            min_thresh = 0.78 - reduction
+        else:
+            # Тільки кінематика, LSTM не впевнений
+            avg_thresh = 0.85
+            min_thresh = 0.75
 
         return avg_score > avg_thresh and min_score > min_thresh
     

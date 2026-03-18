@@ -216,9 +216,11 @@ class TrafficAnalyzer:
                 dists    = np.linalg.norm(traj_a[:steps] - traj_b[:steps], axis=1)
                 min_dist = float(dists.min())
 
-                # Поріг: трохи м'якший ніж поточний collision_distance
-                # бо прогноз має певну похибку
-                lstm_thresh = self.collision_distance * 1.5
+                # Поріг: 1.2x замість 1.5x — LSTM має бути точнішим.
+                # Більший поріг = більше false positives від неточних траєкторій.
+                # 1.2 означає авто мають зблизитись до 1.2 * collision_distance
+                # у передбаченій траєкторії — досить суворо.
+                lstm_thresh = self.collision_distance * 1.2
 
                 if min_dist < lstm_thresh:
                     lstm_risky.add(tid_a)
@@ -363,6 +365,16 @@ class TrafficAnalyzer:
                 # cosine_approach_angle (utils.py) -- кут зближення у градусах.
                 # 0 = лоб-в-лоб, 90 = косий удар. Тільки для логування / налагодження.
                 _angle = cosine_approach_angle(vel_a, vel_b, pos_a, pos_b)
+
+        # ── LSTM як додатковий КІНЕМАТИЧНИЙ фільтр ──────────────────────────────
+        # _predict_collision_lstm перевіряє передбачені LSTM траєкторії.
+        # ПРИНЦИП: LSTM може лише ПІДТВЕРДИТИ пари які вже зблизились фізично
+        # (min_dist < collision_distance * 1.2 в predicted positions).
+        # LSTM НЕ може самостійно додавати треки без будь-якої кінематики —
+        # existing_risky передається щоб він міг розширити лише суміжні ризики.
+        if self._lstm_predicted:
+            lstm_extra = self._predict_collision_lstm(ids, boxes, centers, risky)
+            risky = risky | lstm_extra
 
         return risky
 

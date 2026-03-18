@@ -22,7 +22,6 @@ from modules.services import (
 from modules.metrics import MetricsTracker
 from modules.config.config import Config
 from modules.notification.bot import schedule_notification,wait_for_notifications
-from collections import deque, defaultdict
 
 # ROI
 if os.path.basename(Config.VIDEO_PATH) == "accident_video.mp4":
@@ -267,7 +266,7 @@ def accident_detection(input_video):
                 )
 
         # Підсумковий risky set: кінематика ∪ LSTM
-        collision_risky_ids_total = collision_risky_ids_kin | lstm_high_risk_ids
+        collision_risky_ids_total = collision_risky_ids_kin
 
         crops_to_process, ids_to_process, box_map_for_cnn = [], [], []
         sudden_stop_cache: dict = {}
@@ -316,7 +315,6 @@ def accident_detection(input_video):
                 lstm_risk = lstm_risk_scores.get(tid,0.0)
                 lstm_boost = (lstm_risk ** 2) * 0.25 * score
                 eff_score = min(1.0, score + lstm_boost)
-
                 is_kinematic = tid in collision_risky_ids_kin
 
                 if is_kinematic:
@@ -328,7 +326,7 @@ def accident_detection(input_video):
                 if score >= Config.CNN_SAVE_CROP_THRESH:
                     from datetime import datetime as _dt
                     _ts = _dt.now().strftime("%H%M%S_%f")
-                    _crop_name = f"f{frame_count:06d}_id{tid}_s{score:.3f}_{_ts}.jpg"
+                    _crop_name = f"f{frame_count:06d}_id{tid}_s{score:.3f}.jpg"
                     _crop_path = os.path.join(Config.RESNET_CROPS_DIR, _crop_name)
                     try:
                         cv2.imwrite(_crop_path, crop_img)
