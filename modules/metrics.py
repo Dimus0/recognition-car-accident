@@ -1,5 +1,8 @@
 import cv2
 import numpy as np
+import torch
+from torchvision import transforms
+import logging
 import os
 import json
 from datetime import datetime
@@ -9,19 +12,11 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+from matplotlib.patches import Patch
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score
-from modules.config.config import Config
 
-
-try:
-    import psutil as _psutil
-    _PSUTIL_OK = True
-except ImportError:
-    _PSUTIL_OK = False
-    
 
 class MetricsTracker:
-
     def __init__(self, ground_truth_path: Optional[str] = None,
                  auto_generate_gt: bool = False):
         self.ground_truth_path = ground_truth_path
@@ -30,9 +25,8 @@ class MetricsTracker:
         self.reset()
 
     # ----------------------------------------------------------
-    #  Ground Truth helpers
+    #  Ground Truth
     # ----------------------------------------------------------
-
     def add_ground_truth_frame(self, frame_num: int, vehicles: list,
                                bboxes: list, accident: bool):
         if self.ground_truth is None:
@@ -49,7 +43,7 @@ class MetricsTracker:
 
     def _load_ground_truth(self) -> Optional[Dict]:
         if not os.path.exists(self.ground_truth_path):
-            print(f"⚠️ Ground truth не знайдено: {self.ground_truth_path} -> Відбувається створення...")
+            print(f"Ground truth не знайдено: {self.ground_truth_path} -> Відбувається створення...")
             empty_gt = {
                 "meta": {"note": "Auto-generated empty Ground Truth"},
                 "frame_annotations": {}
@@ -68,7 +62,7 @@ class MetricsTracker:
                     return None
                 return data
             except json.JSONDecodeError:
-                print("⚠️ Ground truth некоректний JSON, пропускаю")
+                print("Ground truth некоректний JSON, пропускаю")
                 return None
 
     # ----------------------------------------------------------
@@ -93,13 +87,10 @@ class MetricsTracker:
                 "cnn": {
                     "total_inferences":              0,
                     "avg_inference_time_ms":         [],
-                    # Всі інференси (включаючи heartbeat на звичайних кадрах):
-                    "high_confidence_predictions":   0,   # score > 0.9
-                    "medium_confidence_predictions": 0,   # score 0.7-0.9
-                    "low_confidence_predictions":    0,   # score < 0.7
-                    # Тільки інференси що спрацювали НА АВАРІЮ (score > CONF_ACCIDENT_HIGH):
-                    "accident_trigger_inferences":   0,
-                    "scores_history":                [],
+                    "high_confidence_predictions":   0,
+                    "medium_confidence_predictions": 0,
+                    "low_confidence_predictions":    0,
+                    "scores_history":                [],   # NEW: всі scores для ROC/PR
                 },
             },
             "tracking": {
@@ -109,20 +100,16 @@ class MetricsTracker:
                 "tracks_per_frame":         [],   # NEW: для графіку
             },
             "accidents": {
-                # unique_incidents — кількість УНІКАЛЬНИХ ДТП-подій (не кадрів!).
-                # total_accidents_detected — тепер алiас до unique_incidents (для сумісності).
-                "unique_incidents":             0,
-                "total_accidents_detected":     0,   # = unique_incidents, оновлюється в finalize
+                "total_accidents_detected":     0,
                 "false_positives_filtered":     0,
                 "collision_warnings":           0,
                 "sudden_stops":                 0,
                 "accidents_by_frame":           [],
-                # Тепер: кількість УНІКАЛЬНИХ авто в кожному інциденті (не per-frame):
                 "average_vehicles_per_accident": [],
-                "accident_confidences":         [],
-                "accident_labels":              [],
-                "all_frame_labels":             [],
-                "all_frame_scores":             [],
+                "accident_confidences":         [],   # NEW
+                "accident_labels":              [],   # NEW: 1=accident,0=normal (для ROC)
+                "all_frame_labels":             [],   # NEW
+                "all_frame_scores":             [],   # NEW
             },
             "performance": {
                 "roi_processing_ratio": 0,
@@ -193,17 +180,9 @@ class MetricsTracker:
         self.start_time  = None
         self.frame_times = deque(maxlen=100)
 
+        # BUG FIX: зберігає максимальний CNN score поточного кадру;
+        # скидається після кожного кадру в update_accident_metrics()
         self._current_frame_max_score: float = 0.0
-
-        # ── Реєстр інцидентів ────────────────────────────────────────────────
-        # Кожна запис = один реальний ДТП-інцидент (не кадр, не трек).
-        # {incident_id: {start_frame, last_frame, track_ids: set, max_conf, severity}}
-        # Два підтвердження одного треку або сусідніх треків у вікні
-        # INCIDENT_MERGE_FRAMES → один і той самий інцидент.
-        self._incidents: dict = {}          # incident_id → dict
-        self._track_to_incident: dict = {}  # track_id → incident_id
-        self._next_incident_id: int = 0
-        self.INCIDENT_MERGE_FRAMES = 90     # 3 сек при 30fps — вікно злиття
 
         # Для MOTA/IDF1
         self.tracking_data = {
@@ -241,10 +220,6 @@ class MetricsTracker:
         self.metrics["processing"]["total_frames"] += 1
         self.metrics["performance"]["frame_times_ms"].append(frame_time_ms)
 
-        if _PSUTIL_OK:
-            ram_mb = _psutil.Process().memory_info().rss / 1024**2
-            self.metrics["performance"]["memory_usage_mb"].append(round(ram_mb,1))
-
     def update_yolo_metrics(self, detections, confidences):
         self.metrics["detection"]["yolo"]["total_detections"] += len(detections)
         if confidences:
@@ -264,9 +239,7 @@ class MetricsTracker:
                 self.metrics["detection"]["cnn"]["medium_confidence_predictions"] += 1
             else:
                 self.metrics["detection"]["cnn"]["low_confidence_predictions"] += 1
-            # Рахуємо тільки ті що реально тригернули аварійну перевірку
-            if score >= 0.86:
-                self.metrics["detection"]["cnn"]["accident_trigger_inferences"] += 1
+        # BUG FIX: запам'ятовуємо максимальний score цього кадру для ROC/PR
         if scores:
             self._current_frame_max_score = max(self._current_frame_max_score, max(scores))
 
@@ -287,28 +260,19 @@ class MetricsTracker:
         frame_num = self.metrics["processing"]["total_frames"]
         label = 1 if accidents_this_frame else 0
         self.metrics["accidents"]["all_frame_labels"].append(label)
+
+        # BUG FIX: записуємо score для КОЖНОГО кадру (не тільки аварійних).
+        # Це єдине місце де синхронно додаються і label, і score → ROC/PR коректні.
         self.metrics["accidents"]["all_frame_scores"].append(self._current_frame_max_score)
-        self._current_frame_max_score = 0.0
+        self._current_frame_max_score = 0.0  # скидаємо для наступного кадру
 
         if accidents_this_frame:
-            # НЕ інкрементуємо total_accidents_detected тут!
-            # Підрахунок унікальних інцидентів відбувається в record_accident()
-            # через реєстр _incidents. Це виключає повторний рахунок одного ДТП
-            # на кожному кадрі поки воно активне (ACCIDENT_LIFETIME = 90 кадрів).
+            self.metrics["accidents"]["total_accidents_detected"] += 1
             self.metrics["accidents"]["accidents_by_frame"].append(frame_num)
+            self.metrics["accidents"]["average_vehicles_per_accident"].append(num_vehicles)
         self.metrics["accidents"]["collision_warnings"] += collision_warnings
         self.metrics["accidents"]["sudden_stops"]       += sudden_stops
 
-    def set_roi_ratio(self, roi_polygon: np.ndarray, frame_width: int, frame_height: int):
-        n = len(roi_polygon)
-        area = 0.0
-        for i in range(n):
-            x1, y1 = roi_polygon[i]
-            x2, y2 = roi_polygon[(i + 1) % n]
-            area += x1 * y2 - x2 * y1
-        roi_area = abs(area) / 2.0
-        frame_area = frame_width * frame_height
-        self.metrics["performance"]["roi_processing_ratio"] = round(roi_area / frame_area, 4)
     # ----------------------------------------------------------
     #  NEW: record_tracks — зберігає позиції треків по кадрам
     # ----------------------------------------------------------
@@ -324,23 +288,7 @@ class MetricsTracker:
     # ----------------------------------------------------------
     def record_accident(self, frame_num: int, accident_type: str,
                         confidence: float, involved_tracks: list, severity: str):
-        """
-        Детальний запис аварійної події + дедуплікація інцидентів.
-
-        Логіка підрахунку унікальних ДТП:
-        ----------------------------------
-        Проблема: один ДТП активний 90 кадрів (ACCIDENT_LIFETIME).
-        Без дедуплікації → 90 записів → «50 аварій» замість 1-2.
-
-        Рішення — реєстр _incidents:
-        1. При першому підтвердженні треку (type='collision') → новий інцидент.
-        2. Якщо цей же трек знову підтверджується в межах INCIDENT_MERGE_FRAMES
-           → той самий інцидент (не новий).
-        3. Якщо РІЗНІ треки підтверджуються в межах INCIDENT_MERGE_FRAMES
-           → перевіряємо чи не перетинаються з існуючим інцидентом.
-           Якщо так — merge (id=6 вдарився в id=5 після id=4+id=5 → один інцидент).
-        4. Кількість авто = len(incident['track_ids']) — унікальні, не сума по кадрах.
-        """
+        """Детальний запис кожної аварійної події."""
         self._accident_records.append({
             "frame":            frame_num,
             "type":             accident_type,
@@ -351,51 +299,8 @@ class MetricsTracker:
         })
         self.metrics["accidents"]["accident_confidences"].append(confidence)
 
-        # Тільки перше підтвердження треку рахується як потенційно новий інцидент
-        if accident_type not in ('collision', 'confirmed'):
-            return
-
-        for track_id in involved_tracks:
-            # Перевіряємо чи цей трек вже прив'язаний до активного інциденту
-            existing_incident_id = self._track_to_incident.get(track_id)
-            if existing_incident_id is not None:
-                inc = self._incidents.get(existing_incident_id)
-                if inc and (frame_num - inc['last_frame']) <= self.INCIDENT_MERGE_FRAMES:
-                    # Той самий інцидент — оновлюємо метадані
-                    inc['last_frame'] = frame_num
-                    inc['max_conf']   = max(inc['max_conf'], confidence)
-                    inc['track_ids'].add(track_id)
-                    continue
-                # Інцидент застарів → трек може стати частиною нового
-
-            # Шукаємо активний інцидент до якого можна приєднати цей трек
-            # (наприклад: id=5 вже в інциденті 1, тепер id=5 б'є id=6 → merge)
-            merged = False
-            for iid, inc in self._incidents.items():
-                if (frame_num - inc['last_frame']) <= self.INCIDENT_MERGE_FRAMES:
-                    if track_id in inc['track_ids']:
-                        # Цей трек вже в активному інциденті → merge нових треків
-                        for new_tid in involved_tracks:
-                            inc['track_ids'].add(new_tid)
-                            self._track_to_incident[new_tid] = iid
-                        inc['last_frame'] = frame_num
-                        inc['max_conf']   = max(inc['max_conf'], confidence)
-                        merged = True
-                        break
-
-            if not merged:
-                # Новий інцидент
-                iid = self._next_incident_id
-                self._next_incident_id += 1
-                self._incidents[iid] = {
-                    'start_frame': frame_num,
-                    'last_frame':  frame_num,
-                    'track_ids':   set(involved_tracks),
-                    'max_conf':    confidence,
-                    'severity':    severity,
-                }
-                for new_tid in involved_tracks:
-                    self._track_to_incident[new_tid] = iid
+        # BUG FIX: видалено подвійний запис all_frame_scores / all_frame_labels.
+        # Вони синхронно заповнюються в update_accident_metrics() → один запис на кадр.
 
     # ----------------------------------------------------------
     #  NEW: update_tracking_for_evaluation
@@ -639,7 +544,8 @@ class MetricsTracker:
         self.metrics["precision_recall_data"]["thresholds"]        = pr_thresh.tolist()
         self.metrics["precision_recall_data"]["average_precision"] = round(float(ap), 4)
 
-        predicted_labels = (scores >= Config.CONF_ACCIDENT_LOW).astype(int)
+        # При фіксованому порозі 0.5
+        predicted_labels = (scores >= 0.5).astype(int)
         tp = int(np.sum((predicted_labels == 1) & (labels == 1)))
         fp = int(np.sum((predicted_labels == 1) & (labels == 0)))
         fn = int(np.sum((predicted_labels == 0) & (labels == 1)))
@@ -762,22 +668,9 @@ class MetricsTracker:
         if isinstance(tl, list):
             self.metrics["tracking"]["avg_track_length"] = avg(tl)
 
-        # ── Рахуємо унікальні інциденти з реєстру ──────────────────────────────
-        # Кожен інцидент = одна реальна ДТП-подія, незалежно від тривалості.
-        unique_count = len(self._incidents)
-        self.metrics["accidents"]["unique_incidents"]         = unique_count
-        self.metrics["accidents"]["total_accidents_detected"] = unique_count
-
-        # Середня кількість авто = унікальні track_ids на інцидент (не per-frame сума)
-        if self._incidents:
-            vehicles_per = [len(inc['track_ids']) for inc in self._incidents.values()]
-            self.metrics["accidents"]["average_vehicles_per_accident"] = round(
-                float(np.mean(vehicles_per)), 2
-            )
-        else:
-            av = self.metrics["accidents"]["average_vehicles_per_accident"]
-            if isinstance(av, list):
-                self.metrics["accidents"]["average_vehicles_per_accident"] = avg(av)
+        av = self.metrics["accidents"]["average_vehicles_per_accident"]
+        if isinstance(av, list):
+            self.metrics["accidents"]["average_vehicles_per_accident"] = avg(av)
 
         # set → int
         uniq = self.metrics["tracking"]["unique_vehicles"]
@@ -790,20 +683,11 @@ class MetricsTracker:
                 self.metrics["processing"]["frames_with_detections"] / tf, 4
             )
 
-        total_cnn = self.metrics["detection"]["cnn"]["total_inferences"]
-        if tf > 0 and total_cnn >= 0:
-            self.metrics["performance"]["cnn_skip_ration"] = round(max(0.0,1.0 - total_cnn / tf),4)
-        
-        if self.metrics["performance"]["roi_processing_ratio"] == 0 and tf > 0:
-            self.metrics["performance"]["roi_processing_ratio"] = round(
-                self.metrics["processing"]["frames_with_detections"] / tf, 4
-            )
-        
-        mem = self.metrics["performance"]["memory_usage_mb"]
-        if isinstance(mem, list) and mem:
-            self.metrics["performance"]["avg_memory_mb"] = round(float(np.mean(mem)), 1)
-            self.metrics["performance"]["peak_memory_mb"] = round(float(np.max(mem)), 1)
-
+        # Розширені обчислення
+        # BUG FIX: auto_generate_gt — якщо GT не завантажено, будуємо pseudo-GT
+        # з впевнених передбачень (score > 0.86). Дозволяє рахувати mAP/MOTA
+        # без ручної розмітки. Результати будуть оптимістичними, але корисними
+        # для відлагодження моделі.
         if self.ground_truth is None and self.auto_generate_gt:
             self._auto_generate_ground_truth()
 
@@ -875,22 +759,12 @@ class MetricsTracker:
         det_pf = m['detection']['yolo']['detections_per_frame']
         print(f"  Середньо/кадр:     {np.mean(det_pf):.1f}" if det_pf else "  Середньо/кадр: N/A")
 
-        print("\n🧠 CNN:")
-        cnn = m['detection']['cnn']
-        total_inf   = cnn['total_inferences']
-        acc_trigger = cnn.get('accident_trigger_inferences', 0)
-        heartbeat   = total_inf - acc_trigger
-        print(f"  Інференсів всього: {total_inf}")
-        print(f"    з них heartbeat: {heartbeat}  (планові перевірки, score зазвичай низький)")
-        print(f"    з них accident:  {acc_trigger} (score >= 0.86 → потрапили в детектор)")
-        print(f"  Середній час:      {cnn['avg_inference_time_ms']} мс")
-        if acc_trigger > 0:
-            print(f"  High (>0.9):       {cnn['high_confidence_predictions']}")
-            print(f"  Medium (0.7-0.9):  {cnn['medium_confidence_predictions']}")
-        else:
-            print(f"  High/Medium/Low:   {cnn['high_confidence_predictions']}/"
-                  f"{cnn['medium_confidence_predictions']}/{cnn['low_confidence_predictions']}"
-                  f"  (переважно heartbeat)")
+        print("\n🧠 CNN:") 
+        print(f"  Інференсів:        {m['detection']['cnn']['total_inferences']}")
+        print(f"  Середній час:      {m['detection']['cnn']['avg_inference_time_ms']} мс")
+        print(f"  High (>0.9):       {m['detection']['cnn']['high_confidence_predictions']}")
+        print(f"  Medium (0.7-0.9):  {m['detection']['cnn']['medium_confidence_predictions']}")
+        print(f"  Low (<0.7):        {m['detection']['cnn']['low_confidence_predictions']}")
 
         print("\n🚗 ТРЕКІНГ:")
         print(f"  Унікальних авто:   {m['tracking']['unique_vehicles']}")
@@ -898,18 +772,10 @@ class MetricsTracker:
         print(f"  Середня довжина:   {m['tracking']['avg_track_length']}")
 
         print("\n🚨 АВАРІЇ:")
-        unique_inc = m['accidents'].get('unique_incidents', 0)
-        print(f"  Унікальних ДТП:    {unique_inc}")
-        for iid, inc in (self._incidents.items() if self._incidents else {}.items()):
-            tids = sorted(inc['track_ids'])
-            dur  = inc['last_frame'] - inc['start_frame']
-            print(f"    ДТП #{iid+1}: кадри {inc['start_frame']}-{inc['last_frame']} "
-                  f"({dur} кадрів) | авто IDs={tids} | max_conf={inc['max_conf']:.3f} | {inc['severity']}")
-        print(f"  Середньо авто/ДТП: {m['accidents']['average_vehicles_per_accident']}")
-        cw = m['accidents']['collision_warnings']
-        ss = m['accidents']['sudden_stops']
-        if cw: print(f"  Попереджень TTC:   {cw}")
-        if ss: print(f"  Раптових зупинок:  {ss}")
+        print(f"  Виявлено:          {m['accidents']['total_accidents_detected']}")
+        print(f"  Попереджень:       {m['accidents']['collision_warnings']}")
+        print(f"  Раптових зупинок:  {m['accidents']['sudden_stops']}")
+        print(f"  Середньо авто:     {m['accidents']['average_vehicles_per_accident']}")
 
         ev = m.get("evaluation", {})
         print("\n📊 ЯКІСТЬ ДЕТЕКЦІЇ (при threshold=0.5):")

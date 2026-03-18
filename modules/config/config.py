@@ -16,14 +16,14 @@ class Config:
     GROUND_TRUTH_PATH = os.path.join(LOG_DIR, "ground_truth.json")
 
 
-    VIDEO_PATH                = r"E:\personalproject\bachelor\data\video\accident_video.mp4"
-    # VIDEO_PATH              = r"E:\personalproject\bachelor\data\video\highway_traffic.mp4"
+    # VIDEO_PATH                = r"E:\personalproject\bachelor\data\video\accident_video.mp4"
+    VIDEO_PATH              = r"E:\personalproject\bachelor\data\video\highway_traffic.mp4"
     # VIDEO_PATH              = r"E:\personalproject\bachelor\data\video\traffic.mp4"
 
     # ------------------ 2. MODELS ------------------
     DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    YOLO_MODEL_PATH = os.path.join(BASE_DIR, "model", "weights", "yolov8-50epochs.pt")
+    YOLO_MODEL_PATH = os.path.join(BASE_DIR, "model", "weights", "yolov8-fine-tuning.pt")
     # YOLO_MODEL_PATH = os.path.join(BASE_DIR, "model", "weights", "yolov11.pt")
     # CNN_WEIGHTS_PATH = os.path.join(BASE_DIR, "model", "weights", "accident_cnn_model.pth")
     CLASSIFIER_WEIGHTS_PATH = os.path.join(BASE_DIR, "model", "weights", "resnet50_accident.pth")
@@ -32,12 +32,12 @@ class Config:
     # ------------------ 3. DETECTION & CNN ------------------
     CONF_YOLO               = 0.6
     CONF_ACCIDENT_HIGH      = 0.95   # Поріг точного ДТП
-    CONF_ACCIDENT_LOW       = 0.87    # Поріг попередження
+    CONF_ACCIDENT_LOW       = 0.88    # Поріг попередження
     HEARTBEAT_RATE          = 30         # Як часто перевіряти авто без підозр # було 10
     VIDEO_BUFFER_SECONDS    = 4.0  # Буфер до/після аварії               # було 2
 
     # ------------------ 4. MOTION LSTM ------------------
-    LSTM_OBS_LEN            = 20 # треба тест на 10
+    LSTM_OBS_LEN            = 20
     LSTM_PRED_LEN           = 30
     LSTM_HIDDEN             = 128
     LSTM_LAYERS             = 2
@@ -55,11 +55,11 @@ class Config:
     CNN_CONTEXT_PADDING = 120
     CNN_SAVE_CROP_THRESH = 0.80
     RESNET_CROPS_DIR     = os.path.join(LOG_DIR, "resnet_crops")
-
     # ------------------ 5. TRAFFIC ANALYZER ------------------
     ANALYZER_MAX_HISTORY        = 25
     ANALYZER_COLLISION_DIST     = 80
     COLLISION_TTC_THRESHOLD     = 1.5
+    # Кінематичні пороги (фінальні, без дублювань)
     SUDDEN_STOP_THRESHOLD       = 0.35
     MIN_SPEED_FOR_STOP          = 6.0
 
@@ -72,7 +72,7 @@ class Config:
     _DEFAULT_TTC_EMA_ALPHA            = 0.35   # вага нового значення в EMA
     _DEFAULT_DENSITY_RADIUS           = 200    # пікс для підрахунку сусідів
     _DEFAULT_DENSITY_DIVISOR          = 0.30   # знижує поріг при щільному русі
-    _DEFAULT_COMPOSITE_RISK_MIN       = 0.55   # трохи суворіший поріг ризику
+    _DEFAULT_COMPOSITE_RISK_MIN       = 0.50   # трохи суворіший поріг ризику
     _DEFAULT_COMPOSITE_WEIGHTS        = (0.50, 0.30, 0.20)  # (ttc, cos, dist)
 # ------------------ 7. ADAPTIVE HEARTBEAT ------------------
     HEARTBEAT_BASE          = 30   # базовий ритм (кадрів)

@@ -46,7 +46,7 @@ def load_models(DEVICE,CLASSIFIER_WEIGHTS_PATH,YOLO_MODEL_PATH):
     yolo.to(DEVICE)
 
     deepsort = DeepSort(
-        max_age=60,              # ЗБІЛЬШЕНО: Чекаємо 60 кадрів (1.5 сек), якщо YOLO загубив авто, перш ніж вбити трек
+        max_age=45,              # ЗБІЛЬШЕНО: Чекаємо 45 кадрів (1.5 сек), якщо YOLO загубив авто, перш ніж вбити трек
         n_init=4,                # ЗБІЛЬШЕНО: Об'єкт має бути впевнено знайдений 4 кадри поспіль, щоб відсіяти "фантоми"
         max_iou_distance=0.7,    # Залишаємо стандарт
         max_cosine_distance=0.3, # Залишаємо (відповідає за порівняння візуальної схожості)
@@ -58,6 +58,24 @@ def load_models(DEVICE,CLASSIFIER_WEIGHTS_PATH,YOLO_MODEL_PATH):
     logger.info("Моделі YOLO та СNN завантажилися")
     return clf,yolo,deepsort
 
+# def process_cnn_batch(crops,cnn_transforms,cnn_model):
+#     if not crops:
+#         return []
+#     tensors = []
+#     for crop in crops:
+#         try:
+#             rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+#             t = cnn_transforms(rgb)
+#             tensors.append(t)
+#         except:
+#             tensors.append(torch.zeros(3, 224, 224))
+#     batch = torch.stack(tensors).to(Config.DEVICE)
+#     with torch.no_grad():
+#         out = cnn_model(batch)
+#         if out.shape[1] == 1:
+#             return torch.sigmoid(out).cpu().numpy().flatten().tolist()
+#         else:
+#             return torch.softmax(out, dim=1)[:, 1].cpu().numpy().tolist()
 
 def process_cnn_batch(crops: list, cnn_model: AccidentClassifier) -> list:
     """
