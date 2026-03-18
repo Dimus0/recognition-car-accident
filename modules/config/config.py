@@ -38,7 +38,7 @@ class Config:
     VIDEO_BUFFER_SECONDS    = 4.0  # Буфер до/після аварії               # було 2
 
     # ------------------ 4. MOTION LSTM ------------------
-    LSTM_OBS_LEN            = 20 # треба тест на 10
+    LSTM_OBS_LEN            = 10 # треба тест на 10
     LSTM_PRED_LEN           = 30
     LSTM_HIDDEN             = 128
     LSTM_LAYERS             = 2
@@ -75,16 +75,14 @@ class Config:
     _DEFAULT_DENSITY_DIVISOR          = 0.30   # знижує поріг при щільному русі
     _DEFAULT_COMPOSITE_RISK_MIN       = 0.55   # трохи суворіший поріг ризику
     _DEFAULT_COMPOSITE_WEIGHTS        = (0.50, 0.30, 0.20)  # (ttc, cos, dist)
+# ------------------ 7. ADAPTIVE HEARTBEAT ------------------
+    HEARTBEAT_BASE          = 30   # базовий ритм (кадрів)
+    HEARTBEAT_CALM          = 60   # ритм для спокійних треків (avg score < 0.15)
+    HEARTBEAT_ALERT         = 10   # ритм для тривожних треків (avg score > 0.40)
+    HEARTBEAT_CALM_THRESH   = 0.15
+    HEARTBEAT_ALERT_THRESH  = 0.40
+    HEARTBEAT_HISTORY_LEN   = 10   # скільки останніх score аналізуємо
 
-
-    # ------------------ 7. ACCIDENT STATE ------------------
+    CNN_TEMPORAL_FRAMES     = 3
+    # ------------------ 8. ACCIDENT STATE ------------------
     ACCIDENT_LIFETIME = 90 # 3 сек при 30 FPS
-
-    # ------------------ 8. REGION OF INTEREST (ROI) ------------------
-    # Область для відео із шосе
-    ROI_POLYGON_HIGHWAY = np.array([
-        (931, 1074), 
-        (120, 956), 
-        (816, 591), 
-        (1025, 597)
-    ], dtype=np.int32)

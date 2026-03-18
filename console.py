@@ -21,6 +21,7 @@ from modules.services import (
 from modules.metrics import MetricsTracker
 from modules.config.config import Config
 from modules.notification.bot import schedule_notification,wait_for_notifications
+from collections import deque, defaultdict
 
 # ROI
 if os.path.basename(Config.VIDEO_PATH) == "accident_video.mp4":
@@ -134,6 +135,8 @@ def accident_detection(input_video):
 
     frame_count = 0
     cnn_results_cache = {}
+    crop_buffer: dict = defaultdict(lambda: deque(maxlen=Config.CNN_TEMPORAL_FRAMES))
+    score_history: dict = defaultdict(lambda: deque(maxlen=Config.HEARTBEAT_HISTORY_LEN))
     notified_accidents: set = set()
     notification_threads: list = []
 
@@ -265,7 +268,7 @@ def accident_detection(input_video):
                 )
 
         # Підсумковий risky set: кінематика ∪ LSTM
-        collision_risky_ids_total = collision_risky_ids_kin
+        collision_risky_ids_total = collision_risky_ids_kin | lstm_high_risk_ids
 
         crops_to_process, ids_to_process, box_map_for_cnn = [], [], []
         sudden_stop_cache: dict = {}
@@ -275,13 +278,20 @@ def accident_detection(input_video):
 
             is_sudden_stop = analyzer.detect_sudden_stop(tid, boxes, ids)
             sudden_stop_cache[tid] = is_sudden_stop
-
+            recent_scores = list(score_history[tid])
+            avg_recent = sum(recent_scores) / len(recent_scores) if recent_scores else 0.0
+            if avg_recent < Config.HEARTBEAT_CALM_THRESH:
+                heartbeat_fires = frame_count % Config.HEARTBEAT_CALM == 0
+            elif avg_recent > Config.HEARTBEAT_ALERT_THRESH:
+                heartbeat_fires = frame_count % Config.HEARTBEAT_ALERT == 0
+            else:
+                heartbeat_fires = frame_count % Config.HEARTBEAT_BASE == 0
             should_run = (
                 accident_state.is_accident_active(tid, frame_count)
                 or tid in collision_risky_ids_total
-                # or tid in lstm_risk_ids              # ← LSTM виявив ризик
+                or tid in lstm_risk_ids         # ← LSTM виявив ризик
                 or is_sudden_stop
-                or frame_count % Config.HEARTBEAT_RATE == 0
+                or heartbeat_fires
             )
 
             if should_run:
@@ -293,7 +303,15 @@ def accident_detection(input_video):
                 cy2 = min(h_frame, y2 + pad)
                 crop = frame[cy1:cy2, cx1:cx2]
                 if crop.size > 0:
-                    crops_to_process.append(crop)
+                    crop_buffer[tid].append(crop)
+                    if len(crop_buffer[tid]) == Config.CNN_TEMPORAL_FRAMES:
+                        target_h, target_w = 224,224
+                        resized = [cv2.resize(c, (target_w, target_h))
+                                   for c in crop_buffer[tid]]
+                        temporal_crop = np.concatenate(resized, axis=2)  # 224×224×9
+                        crops_to_process.append(temporal_crop)
+                    else:
+                        crops_to_process.append(crop)
                     ids_to_process.append(tid)
                     box_map_for_cnn.append((x1, y1, x2, y2))
 
@@ -333,6 +351,7 @@ def accident_detection(input_video):
                         logger.warning(f"[CROP SAVE] Помилка: {_e}")
 
                 accident_state.update_score(tid, eff_score, frame_count)
+                score_history[tid].append(eff_score)
                 is_already_confirmed = accident_state.is_confirmed_accident(tid)
 
                 should_confirm = accident_state.should_confirm_accident(
@@ -340,8 +359,8 @@ def accident_detection(input_video):
                     lstm_risk=lstm_risk,
                     is_kinematic=is_kinematic,   # LSTM reduction тільки якщо кінематика згодна
                 )
-                should_confirm = accident_state.should_confirm_accident(tid, eff_score,lstm_risk=lstm_risk)
-                is_kinematic = tid in collision_risky_ids_kin
+                # should_confirm = accident_state.should_confirm_accident(tid, eff_score,lstm_risk=lstm_risk)
+                # is_kinematic = tid in collision_risky_ids_kin
                 is_lstm_flag = tid in lstm_high_risk_ids or tid in lstm_risk_ids
                 is_sudden    = sudden_stop_cache.get(tid, False)
 
@@ -560,7 +579,11 @@ def accident_detection(input_video):
 
         if motion_lstm:
             motion_lstm.cleanup(ids)
-
+            
+        lost_ids = set(crop_buffer.keys()) - set(ids)
+        for lid in lost_ids:
+            crop_buffer.pop(lid, None)
+            score_history.pop(lid, None)
         # 7. Візуалізація (Draw Loop)
         if motion_lstm:
             frame = motion_lstm.draw_predictions(

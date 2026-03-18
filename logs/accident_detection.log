@@ -83,3 +83,7 @@
 2026-03-18 13:10:11,283 - INFO - [FRAME 151] ✅ CONFIRMED ACCIDENT | ID=4 | cnn_score=0.7144 | eff_score=0.7144 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=True | lstm_flag=False | sudden_stop=False
 2026-03-18 13:10:14,910 - INFO - [FRAME 152] CONFIRMED ACCIDENT | ID=4 | SCORE=0.70
 2026-03-18 13:10:14,911 - INFO - [FRAME 152] ✅ CONFIRMED ACCIDENT | ID=4 | cnn_score=0.7030 | eff_score=0.7030 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=True | lstm_flag=False | sudden_stop=False
+2026-03-18 13:12:46,599 - CRITICAL - [VideoBuffer] Кліп збережено: E:\personalproject\bachelor\logs\fragments\clip\accident_clip_0001_f127.mp4 (238 кадрів)
+2026-03-18 13:15:25,514 - INFO - [TELEGRAM BOT] Очікуємо відправку 1 сповіщень (max 180с)...
+2026-03-18 13:15:25,514 - INFO - [TELEGRAM BOT] Всі сповіщення відправлено.
+2026-03-18 13:15:33,736 - INFO - Processing finished. Output: E:\personalproject\bachelor\logs\fragments\result.mp4
