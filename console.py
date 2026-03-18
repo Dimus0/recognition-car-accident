@@ -326,7 +326,7 @@ def accident_detection(input_video):
                 if score >= Config.CNN_SAVE_CROP_THRESH:
                     from datetime import datetime as _dt
                     _ts = _dt.now().strftime("%H%M%S_%f")
-                    _crop_name = f"f{frame_count:06d}_id{tid}_s{score:.3f}.jpg"
+                    _crop_name = f"f{frame_count:06d}_id{tid}_SCORE_{score:.3f}.jpg"
                     _crop_path = os.path.join(Config.RESNET_CROPS_DIR, _crop_name)
                     try:
                         cv2.imwrite(_crop_path, crop_img)

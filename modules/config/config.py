@@ -53,7 +53,7 @@ class Config:
     RESNET50_NUM_CLASSES  = 2
     RESNET50_DROPOUT      = 0.4
     RESNET50_ACCIDENT_IDX = 0
-    CNN_CONTEXT_PADDING = 180
+    CNN_CONTEXT_PADDING = 130
     CNN_SAVE_CROP_THRESH = 0.80
     RESNET_CROPS_DIR     = os.path.join(LOG_DIR, "resnet_crops")
     # ------------------ 5. TRAFFIC ANALYZER ------------------

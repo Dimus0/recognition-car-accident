@@ -5,6 +5,7 @@ from torchvision import transforms
 import logging
 import os
 import json
+import psutil
 from datetime import datetime
 from collections import defaultdict, deque
 from typing import Dict, List, Tuple, Optional
@@ -121,9 +122,9 @@ class MetricsTracker:
                 "all_frame_scores":             [],
             },
             "performance": {
-                "roi_processing_ratio": 0,
-                "cnn_skip_ratio":       0,
-                "memory_usage_mb":      [],
+                "roi_processing_ratio": 0.0,
+                "cnn_skip_ratio":       0.0,
+                "memory_usage_mb":      0.0,
                 "frame_times_ms":       [],   # NEW: сирі значення для перцентилів
             },
             "evaluation": {
@@ -191,6 +192,13 @@ class MetricsTracker:
 
         self._current_frame_max_score: float = 0.0
 
+        # ── Лічильники для ROI / CNN-skip ratio ─────────────────────────────
+        self._roi_frames_count:     int = 0   # кадрів де активно ROI-зона
+        self._cnn_skipped_count:    int = 0   # кадрів де CNN-інференс пропущено
+        # ── Зразки пам'яті (МБ) для усереднення ─────────────────────────────
+        self._memory_samples: list = []
+        self._process = psutil.Process(os.getpid())
+
         # ── Реєстр інцидентів ────────────────────────────────────────────────
         # Кожна запис = один реальний ДТП-інцидент (не кадр, не трек).
         # {incident_id: {start_frame, last_frame, track_ids: set, max_conf, severity}}
@@ -236,6 +244,26 @@ class MetricsTracker:
         self.frame_times.append(frame_time_ms)
         self.metrics["processing"]["total_frames"] += 1
         self.metrics["performance"]["frame_times_ms"].append(frame_time_ms)
+        # Знімаємо зразок пам'яті кожні 30 кадрів (щоб не навантажувати)
+        tf = self.metrics["processing"]["total_frames"]
+        if tf % 30 == 0:
+            self.update_memory_usage()
+
+    def update_memory_usage(self):
+        """Фіксує поточне RSS-споживання пам'яті процесу (в МБ)."""
+        try:
+            mem_mb = self._process.memory_info().rss / (1024 * 1024)
+            self._memory_samples.append(mem_mb)
+        except Exception:
+            pass
+
+    def record_roi_frame(self):
+        """Викликається коли кадр оброблявся через ROI-зону."""
+        self._roi_frames_count += 1
+
+    def record_cnn_skip(self):
+        """Викликається коли CNN-інференс пропущено для кадру."""
+        self._cnn_skipped_count += 1
 
     def update_yolo_metrics(self, detections, confidences):
         self.metrics["detection"]["yolo"]["total_detections"] += len(detections)
@@ -772,6 +800,27 @@ class MetricsTracker:
             self.metrics["performance"]["detection_rate"] = round(
                 self.metrics["processing"]["frames_with_detections"] / tf, 4
             )
+            # ── ROI / CNN-skip ratios ────────────────────────────────────────
+            self.metrics["performance"]["roi_processing_ratio"] = round(
+                self._roi_frames_count / tf, 4
+            )
+            self.metrics["performance"]["cnn_skip_ratio"] = round(
+                self._cnn_skipped_count / tf, 4
+            )
+
+        # ── Memory usage (average of samples, fallback to current) ──────────
+        self.update_memory_usage()   # фінальний зразок
+        if self._memory_samples:
+            self.metrics["performance"]["memory_usage_mb"] = round(
+                float(np.mean(self._memory_samples)), 2
+            )
+        else:
+            try:
+                self.metrics["performance"]["memory_usage_mb"] = round(
+                    self._process.memory_info().rss / (1024 * 1024), 2
+                )
+            except Exception:
+                self.metrics["performance"]["memory_usage_mb"] = 0.0
 
         # Розширені обчислення
         # BUG FIX: auto_generate_gt — якщо GT не завантажено, будуємо pseudo-GT
