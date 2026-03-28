@@ -15,12 +15,13 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.patches import Patch
 from sklearn.metrics import roc_curve, auc, precision_recall_curve, average_precision_score
+from modules.config.config import Config
 
 
 class MetricsTracker:
 
     def __init__(self, ground_truth_path: Optional[str] = None,
-                 auto_generate_gt: bool = False):
+                 auto_generate_gt: bool = True):
         self.ground_truth_path = ground_truth_path
         self.auto_generate_gt  = auto_generate_gt
         self.ground_truth      = self._load_ground_truth() if ground_truth_path else None
@@ -618,6 +619,7 @@ class MetricsTracker:
         """
         scores = self.metrics["accidents"]["all_frame_scores"]
         labels = self.metrics["accidents"]["all_frame_labels"]
+        
 
         # Якщо немає ground truth — fallback: score > threshold = label
         if not self.ground_truth and not scores:
@@ -650,7 +652,7 @@ class MetricsTracker:
         self.metrics["precision_recall_data"]["average_precision"] = round(float(ap), 4)
 
         # При фіксованому порозі 0.5
-        predicted_labels = (scores >= 0.5).astype(int)
+        predicted_labels = (scores >= Config.CONF_ACCIDENT_LOW).astype(int)
         tp = int(np.sum((predicted_labels == 1) & (labels == 1)))
         fp = int(np.sum((predicted_labels == 1) & (labels == 0)))
         fn = int(np.sum((predicted_labels == 0) & (labels == 1)))
@@ -685,10 +687,6 @@ class MetricsTracker:
         self.metrics["latency"]["min_ms"] = round(float(np.min(arr)), 2)
         self.metrics["latency"]["max_ms"] = round(float(np.max(arr)), 2)
 
-    # ----------------------------------------------------------
-    #  NEW: Compute speed metrics
-    # ----------------------------------------------------------
-
     def compute_speed_metrics(self):
         speeds = []
         for tid, records in self._track_records.items():
@@ -704,9 +702,6 @@ class MetricsTracker:
         hist, _ = np.histogram(arr, bins=20)
         self.metrics["speed_metrics"]["speed_histogram"] = hist.tolist()
 
-    # ----------------------------------------------------------
-    #  BUG FIX: Auto-generate pseudo ground truth
-    # ----------------------------------------------------------
 
     def _auto_generate_ground_truth(self):
         """
@@ -867,107 +862,147 @@ class MetricsTracker:
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(safe, f, indent=2, ensure_ascii=False)
 
-    def print_summary(self):
-        m = self.metrics
-        BG = "\033[40m"; RESET = "\033[0m"
+    def _build_summary_lines(self) -> list:
+        """
+        Будує список рядків зведення метрик.
+        Використовується як print_summary() так і save_summary_to_file().
+        Повертає list[str] — без символів нового рядка на кінці.
+        """
+        m    = self.metrics
+        sep  = "=" * 70
+        lines = []
 
-        def _s(val, fmt=".3f"):
-            try:    return format(val, fmt)
-            except: return str(val)
+        def ln(s=""): lines.append(s)
 
-        print(f"\n{'='*70}")
-        print("  📊 METRICS SUMMARY")
-        print(f"{'='*70}")
+        ln(); ln(sep); ln("  METRICS SUMMARY"); ln(sep)
 
-        print("\n📹 ВІДЕО:")
-        print(f"  Шлях:              {m['video_info'].get('path', 'N/A')}")
-        print(f"  Роздільна здатність: {m['video_info'].get('resolution', 'N/A')}")
-        print(f"  FPS відео:         {m['video_info'].get('fps', 'N/A')}")
-        print(f"  Тривалість:        {m['video_info'].get('duration_seconds', 0):.1f} сек")
+        ln()
+        ln("VIDEO:")
+        ln(f"  Path:                {m['video_info'].get('path', 'N/A')}")
+        ln(f"  Resolution:          {m['video_info'].get('resolution', 'N/A')}")
+        ln(f"  Video FPS:           {m['video_info'].get('fps', 'N/A')}")
+        ln(f"  Duration:            {m['video_info'].get('duration_seconds', 0):.1f} sec")
 
-        print("\n⚡ ПРОДУКТИВНІСТЬ:")
-        print(f"  Оброблено кадрів:  {m['processing']['total_frames']}")
-        print(f"  Час обробки:       {m['processing']['processing_time_seconds']} сек")
-        print(f"  Середній FPS:      {m['processing']['avg_fps']}")
-        l = m.get("latency", {})
-        print(f"  Latency P50/P95/P99: {l.get('p50_ms',0)}/{l.get('p95_ms',0)}/{l.get('p99_ms',0)} мс")
+        ln()
+        ln("PERFORMANCE:")
+        ln(f"  Frames processed:    {m['processing']['total_frames']}")
+        ln(f"  Processing time:     {m['processing']['processing_time_seconds']} sec")
+        ln(f"  Average FPS:         {m['processing']['avg_fps']}")
+        lat = m.get("latency", {})
+        ln(f"  Latency P50/P95/P99: "
+           f"{lat.get('p50_ms',0)}/{lat.get('p95_ms',0)}/{lat.get('p99_ms',0)} ms")
+        ln(f"  Memory usage:        {m['performance'].get('memory_usage_mb', 0):.1f} MB")
 
-        print("\n🎯 YOLO:")
-        print(f"  Детекцій:          {m['detection']['yolo']['total_detections']}")
-        print(f"  Середня впевн.:    {m['detection']['yolo']['avg_confidence']}")
+        ln()
+        ln("YOLO:")
+        ln(f"  Total detections:    {m['detection']['yolo']['total_detections']}")
+        ln(f"  Avg confidence:      {m['detection']['yolo']['avg_confidence']}")
         det_pf = m['detection']['yolo']['detections_per_frame']
-        print(f"  Середньо/кадр:     {np.mean(det_pf):.1f}" if det_pf else "  Середньо/кадр: N/A")
+        ln(f"  Avg per frame:       {np.mean(det_pf):.1f}" if det_pf else
+           f"  Avg per frame:       N/A")
 
-        print("\n🧠 CNN:")
-        cnn = m['detection']['cnn']
+        ln()
+        cnn         = m['detection']['cnn']
         total_inf   = cnn['total_inferences']
         acc_trigger = cnn.get('accident_trigger_inferences', 0)
         heartbeat   = total_inf - acc_trigger
-        print(f"  Інференсів всього: {total_inf}")
-        print(f"    з них heartbeat: {heartbeat}  (планові перевірки, score зазвичай низький)")
-        print(f"    з них accident:  {acc_trigger} (score >= 0.86 → потрапили в детектор)")
-        print(f"  Середній час:      {cnn['avg_inference_time_ms']} мс")
+        ln("CNN:")
+        ln(f"  Total inferences:    {total_inf}")
+        ln(f"    heartbeat:         {heartbeat}  (scheduled checks)")
+        ln(f"    accident triggers: {acc_trigger}  (score >= 0.86)")
+        ln(f"  Avg inference time:  {cnn['avg_inference_time_ms']} ms")
         if acc_trigger > 0:
-            print(f"  High (>0.9):       {cnn['high_confidence_predictions']}")
-            print(f"  Medium (0.7-0.9):  {cnn['medium_confidence_predictions']}")
+            ln(f"  High conf (>0.9):   {cnn['high_confidence_predictions']}")
+            ln(f"  Med  conf (0.7-0.9):{cnn['medium_confidence_predictions']}")
         else:
-            print(f"  High/Medium/Low:   {cnn['high_confidence_predictions']}/"
-                  f"{cnn['medium_confidence_predictions']}/{cnn['low_confidence_predictions']}"
-                  f"  (переважно heartbeat)")
+            ln(f"  High/Med/Low:        "
+               f"{cnn['high_confidence_predictions']}/"
+               f"{cnn['medium_confidence_predictions']}/"
+               f"{cnn['low_confidence_predictions']}  (mostly heartbeat)")
 
-        print("\n🚗 ТРЕКІНГ:")
-        print(f"  Унікальних авто:   {m['tracking']['unique_vehicles']}")
-        print(f"  Макс одночасно:    {m['tracking']['max_simultaneous_tracks']}")
-        print(f"  Середня довжина:   {m['tracking']['avg_track_length']}")
+        ln()
+        ln("TRACKING:")
+        ln(f"  Unique vehicles:     {m['tracking']['unique_vehicles']}")
+        ln(f"  Max simultaneous:    {m['tracking']['max_simultaneous_tracks']}")
+        ln(f"  Avg track length:    {m['tracking']['avg_track_length']}")
 
-        print("\n🚨 АВАРІЇ:")
+        ln()
+        ln("ACCIDENTS:")
         unique_inc = m['accidents'].get('unique_incidents', 0)
-        print(f"  Унікальних ДТП:    {unique_inc}")
+        ln(f"  Unique incidents:    {unique_inc}")
         for iid, inc in (self._incidents.items() if self._incidents else {}.items()):
             tids = sorted(inc['track_ids'])
             dur  = inc['last_frame'] - inc['start_frame']
-            print(f"    ДТП #{iid+1}: кадри {inc['start_frame']}-{inc['last_frame']} "
-                  f"({dur} кадрів) | авто IDs={tids} | max_conf={inc['max_conf']:.3f} | {inc['severity']}")
-        print(f"  Середньо авто/ДТП: {m['accidents']['average_vehicles_per_accident']}")
+            ln(f"    Incident #{iid+1}: frames {inc['start_frame']}-{inc['last_frame']} "
+               f"({dur} frames) | vehicle IDs={tids} | "
+               f"max_conf={inc['max_conf']:.3f} | {inc['severity']}")
+        ln(f"  Avg vehicles/incident: {m['accidents']['average_vehicles_per_accident']}")
         cw = m['accidents']['collision_warnings']
         ss = m['accidents']['sudden_stops']
-        if cw: print(f"  Попереджень TTC:   {cw}")
-        if ss: print(f"  Раптових зупинок:  {ss}")
+        if cw: ln(f"  TTC warnings:        {cw}")
+        if ss: ln(f"  Sudden stops:        {ss}")
 
+        ln()
         ev = m.get("evaluation", {})
-        print("\n📊 ЯКІСТЬ ДЕТЕКЦІЇ (при threshold=0.5):")
-        print(f"  Precision:         {ev.get('precision', 0):.4f}")
-        print(f"  Recall:            {ev.get('recall', 0):.4f}")
-        print(f"  F1-Score:          {ev.get('f1_score', 0):.4f}")
-        print(f"  Accuracy:          {ev.get('accuracy', 0):.4f}")
-        print(f"  ROC-AUC:           {m['roc_data'].get('auc', 0):.4f}")
-        print(f"  PR-AUC (AP):       {m['precision_recall_data'].get('average_precision', 0):.4f}")
-        print(f"  mAP:               {ev.get('mAP', 0):.4f}")
-        print(f"  mAP@0.5:           {ev.get('mAP_50', 0):.4f}")
-        print(f"  mAP@0.75:          {ev.get('mAP_75', 0):.4f}")
+        ln("DETECTION QUALITY:")
+        ln(f"  Precision:           {ev.get('precision', 0):.4f}")
+        ln(f"  Recall:              {ev.get('recall', 0):.4f}")
+        ln(f"  F1-Score:            {ev.get('f1_score', 0):.4f}")
+        ln(f"  Accuracy:            {ev.get('accuracy', 0):.4f}")
+        ln(f"  ROC-AUC:             {m['roc_data'].get('auc', 0):.4f}")
+        ln(f"  PR-AUC (AP):         {m['precision_recall_data'].get('average_precision', 0):.4f}")
+        ln(f"  mAP:                 {ev.get('mAP', 0):.4f}")
+        ln(f"  mAP@0.5:             {ev.get('mAP_50', 0):.4f}")
+        ln(f"  mAP@0.75:            {ev.get('mAP_75', 0):.4f}")
 
+        ln()
         te = m.get("tracking_evaluation", {})
-        print("\n🎯 ТРЕКІНГ (MOTA/IDF1):")
-        print(f"  MOTA:              {te.get('MOTA', 0):.4f}")
-        print(f"  IDF1:              {te.get('IDF1', 0):.4f}")
-        print(f"  ID Switches:       {te.get('id_switches', 0)}")
-        print(f"  False Positives:   {te.get('false_positives', 0)}")
-        print(f"  False Negatives:   {te.get('false_negatives', 0)}")
+        ln("TRACKING EVALUATION (MOTA/IDF1):")
+        ln(f"  MOTA:                {te.get('MOTA', 0):.4f}")
+        ln(f"  IDF1:                {te.get('IDF1', 0):.4f}")
+        ln(f"  ID Switches:         {te.get('id_switches', 0)}")
+        ln(f"  False Positives:     {te.get('false_positives', 0)}")
+        ln(f"  False Negatives:     {te.get('false_negatives', 0)}")
 
         lstm = m.get("lstm", {})
         if lstm.get("enabled"):
             avg_probs = lstm.get("avg_accident_prob", [])
-            print("\n🤖 LSTM ПЕРЕДБАЧЕННЯ:")
-            print(f"  Статус:            enabled")
-            print(f"  Середня ймовірність: {np.mean(avg_probs):.4f}" if avg_probs else "  Дані відсутні")
+            ln()
+            ln("LSTM PREDICTIONS:")
+            ln(f"  Status:              enabled")
+            ln((f"  Avg probability:     {np.mean(avg_probs):.4f}")
+               if avg_probs else "  Data:                N/A")
 
         sm = m.get("speed_metrics", {})
         if sm.get("avg_speed_px_per_frame", 0) > 0:
-            print("\n🏎 ШВИДКІСТЬ АВТО:")
-            print(f"  Середня:           {sm['avg_speed_px_per_frame']} пкс/кадр")
-            print(f"  Максимальна:       {sm['max_speed_px_per_frame']} пкс/кадр")
+            ln()
+            ln("VEHICLE SPEED:")
+            ln(f"  Average:             {sm['avg_speed_px_per_frame']} px/frame")
+            ln(f"  Maximum:             {sm['max_speed_px_per_frame']} px/frame")
 
-        print(f"\n{'='*70}\n")
+        ln(); ln(sep); ln()
+        return lines
+
+    def print_summary(self):
+        """Виводить зведення метрик у консоль."""
+        for line in self._build_summary_lines():
+            print(line)
+
+    def save_summary_to_file(self, filepath: str):
+        """
+        Зберігає текстове зведення метрик у файл.
+
+        Parameters
+        ----------
+        filepath : str
+            Повний шлях до файлу (наприклад, .../logs_video/metrics_summary.txt).
+            Директорія створюється автоматично.
+        """
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        lines = self._build_summary_lines()
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        print(f"  Metrics summary saved: {filepath}")
 
     # ----------------------------------------------------------
     #  NEW: save_all_plots — зберігає всі графіки

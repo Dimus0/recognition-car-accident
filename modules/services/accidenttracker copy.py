@@ -43,10 +43,7 @@ class AccidentStateTracker:
 
         latest_score = history[-1]
 
-        if lstm_risk >= 0.88 and latest_score > 0.74:
-            return True
-        
-        if latest_score > 0.92 and (is_sudden or is_kinematic or lstm_risk > 0.5):
+        if latest_score > 0.88 and (is_sudden or is_kinematic or lstm_risk > 0.5):
             return True
 
         # ── Визначаємо мінімальну кількість кадрів для підтвердження ─────────
@@ -68,7 +65,8 @@ class AccidentStateTracker:
 
         # ── LSTM знижує поріг для БУДЬ-ЯКОГО сценарію (додано втрачену логіку) ──
         if lstm_risk >= 0.5:
-            reduction = (lstm_risk - 0.5) * 0.30
+            # Знижуємо поріг лінійно: макс. зниження на 0.09 при lstm_risk = 1.0
+            reduction = (lstm_risk - 0.5) * 0.18
             avg_thresh -= reduction
             min_thresh -= reduction
 

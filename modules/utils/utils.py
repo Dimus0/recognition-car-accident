@@ -38,9 +38,6 @@ def load_models(DEVICE,CLASSIFIER_WEIGHTS_PATH,YOLO_MODEL_PATH):
         clf.class_names, DEVICE
     )
 
-    # cnn = ImproveAccidentCNN().to(DEVICE)
-    # cnn.load_state_dict(torch.load(CNN_WEIGHTS_PATH, map_location=DEVICE))
-    # cnn.eval()
 
     yolo = YOLO(YOLO_MODEL_PATH)
     yolo.to(DEVICE)
@@ -52,30 +49,13 @@ def load_models(DEVICE,CLASSIFIER_WEIGHTS_PATH,YOLO_MODEL_PATH):
         max_cosine_distance=0.3, # Залишаємо (відповідає за порівняння візуальної схожості)
         nn_budget=30,            # Залишаємо (скільки попередніх кадрів авто пам'ятає мережа)
         embedder="mobilenet",    # ДОДАНО (Опціонально): Вказує DeepSort використовувати легку нейромережу для розрізнення машин за виглядом
-        half=True                # ДОДАНО: Прискорює роботу на GPU
+        half=True,                # ДОДАНО: Прискорює роботу на GPU,
+        nms_max_overlap=0.4,
     )
     
     logger.info("Моделі YOLO та СNN завантажилися")
     return clf,yolo,deepsort
 
-# def process_cnn_batch(crops,cnn_transforms,cnn_model):
-#     if not crops:
-#         return []
-#     tensors = []
-#     for crop in crops:
-#         try:
-#             rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
-#             t = cnn_transforms(rgb)
-#             tensors.append(t)
-#         except:
-#             tensors.append(torch.zeros(3, 224, 224))
-#     batch = torch.stack(tensors).to(Config.DEVICE)
-#     with torch.no_grad():
-#         out = cnn_model(batch)
-#         if out.shape[1] == 1:
-#             return torch.sigmoid(out).cpu().numpy().flatten().tolist()
-#         else:
-#             return torch.softmax(out, dim=1)[:, 1].cpu().numpy().tolist()
 
 def process_cnn_batch(crops: list, cnn_model: AccidentClassifier) -> list:
     """

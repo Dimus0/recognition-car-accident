@@ -151,7 +151,7 @@ def accident_detection(input_video):
     notified_accidents: set = set()
     notification_threads: list = []
 
-    GHOST_MAX_AGE = 10
+    GHOST_MAX_AGE = 15
     ghost_tracks: dict = {}
 
     logger.info(f"Starting processing: {total_frames} frames | LSTM: {'ON' if motion_lstm else 'OFF'}")
@@ -181,7 +181,7 @@ def accident_detection(input_video):
         # ══════════════════════════════════════════════════════════
         #  YOLO Inference
         # ══════════════════════════════════════════════════════════
-        results = yolo_model(frame, conf=Config.CONF_YOLO, iou=0.45, verbose=False)
+        results = yolo_model(frame, conf=Config.CONF_YOLO, iou=0.66, verbose=False)
 
         yolo_confidences = []
         detections = []
@@ -410,10 +410,7 @@ def accident_detection(input_video):
                 else:
                     risk_details += " | Kinematic: NO"
 
-                if lstm_risk >= Config.LSTM_HIGH_CONFIDENCE_THRESH:          # >= 0.85
-                    lstm_boost = lstm_risk * 0.45 * (1.0 - score)
-                else:
-                    lstm_boost = (lstm_risk ** 2) * 0.25 * score             # стара формула
+                lstm_boost = (lstm_risk ** 2) * 0.25 * score
                 eff_score = min(1.0, score + lstm_boost)
 
                 is_sudden    = sudden_stop_cache.get(tid, False)
@@ -490,16 +487,7 @@ def accident_detection(input_video):
                     )
                 elif should_confirm:
                     high_thresh = 0.97 if (is_sudden and not is_kinematic) else Config.CONF_ACCIDENT_HIGH
-                    if lstm_risk >= Config.LSTM_HIGH_CONFIDENCE_THRESH:
-                        reduction = (lstm_risk - Config.LSTM_HIGH_CONFIDENCE_THRESH) \
-                                    * Config.LSTM_THRESHOLD_REDUCTION_K
-                        high_thresh = max(Config.LSTM_MIN_CNN_THRESH, high_thresh - reduction)
-                    lstm_direct = (
-                        lstm_risk >= Config.LSTM_DIRECT_OVERRIDE
-                        and eff_score >= Config.LSTM_DIRECT_CNN_MIN
-                    )
-
-                    if eff_score > high_thresh or lstm_direct:
+                    if eff_score > high_thresh:
                         accident_state.confirm_accident(tid, frame_count)
                         label = f"ACCIDENT {eff_score:.2f}"
                         color = (0, 0, 255)

@@ -1,62 +1,413 @@
-2026-03-18 16:37:31,940 - INFO - AccidentClassifier завантажено | класи=['Accident', 'Non Accident'] | device=cpu
-2026-03-18 16:37:36,561 - INFO - MobileNetV2 Embedder for Deep Sort initialised
-2026-03-18 16:37:36,561 - INFO - - gpu enabled: False
-2026-03-18 16:37:36,561 - INFO - - half precision: False
-2026-03-18 16:37:36,561 - INFO - - max batch size: 16
-2026-03-18 16:37:36,561 - INFO - - expects BGR: True
-2026-03-18 16:37:39,624 - INFO - DeepSort Tracker initialised
-2026-03-18 16:37:39,630 - INFO - - max age: 45
-2026-03-18 16:37:39,631 - INFO - - appearance threshold: 0.3
-2026-03-18 16:37:39,631 - INFO - - nms threshold: OFF
-2026-03-18 16:37:39,631 - INFO - - max num of appearance features: 30
-2026-03-18 16:37:39,631 - INFO - - overriding track class : No
-2026-03-18 16:37:39,632 - INFO - - today given : No
-2026-03-18 16:37:39,632 - INFO - - in-build embedder : Yes
-2026-03-18 16:37:39,632 - INFO - - polygon detections : No
-2026-03-18 16:37:39,632 - INFO - Моделі YOLO та СNN завантажилися
-2026-03-18 16:37:39,634 - INFO - Класифікатор завантажено | класи=['Accident', 'Non Accident'] | device=cpu
-2026-03-18 16:37:40,092 - INFO - [LSTM] MotionLSTM завантажено | obs=20 pred=30
-2026-03-18 16:37:40,097 - INFO - Models loaded successfully. MotionLSTM: ON
-2026-03-18 16:37:41,108 - INFO - Starting processing: 346 frames | LSTM: ON
-2026-03-18 16:41:02,618 - INFO - [FRAME 121] ⚠️  WARNING | ID=4 | cnn_score=0.9156 | eff_score=0.9489 | lstm_risk=0.3811 | kinematic=True | lstm_flag=True | sudden_stop=False
-2026-03-18 16:41:04,530 - INFO - [FRAME 122] ⚠️  WARNING | ID=4 | cnn_score=0.8896 | eff_score=0.9123 | lstm_risk=0.3196 | kinematic=True | lstm_flag=True | sudden_stop=False
-2026-03-18 16:41:06,215 - WARNING - [FRAME 123] NEW ACCIDENT | ID=4 | SCORE=0.93
-2026-03-18 16:41:06,215 - WARNING - [FRAME 123] 🚨 NEW ACCIDENT DETECTED | ID=4 | cnn_score=0.9284 | eff_score=0.9616 | lstm_risk=0.3779 | lstm_boost=0.0332 | kinematic=True | lstm_flag=True | sudden_stop=False | bbox=(560,418,712,538) | threshold=0.95
-2026-03-18 16:41:07,188 - INFO - [VideoBuffer] Тригер на кадрі 123 → E:\personalproject\bachelor\logs\fragments\clip\accident_clip_0001_f123.mp4
-2026-03-18 16:41:07,189 - CRITICAL - [ACCIDENT SAVED] Frame 123 | Vehicles: 3 | Severity: 🔴CRITICAL | Photo: E:\personalproject\bachelor\logs\fragments\accidents\accident_20260318_164106_219103_frame123.jpg | Video: E:\personalproject\bachelor\logs\fragments\clip\accident_clip_0001_f123.mp4
-2026-03-18 16:41:07,190 - CRITICAL - [ACCIDENT SAVED] Frame=123 | Vehicles=3 (primary=1 secondary=2) | Severity=🔴CRITICAL | max_conf=0.9620 | avg_conf=0.5470 | timestamp=00:04 | Photo=E:\personalproject\bachelor\logs\fragments\accidents\accident_20260318_164106_219103_frame123.jpg | Video=E:\personalproject\bachelor\logs\fragments\clip\accident_clip_0001_f123.mp4
-2026-03-18 16:41:07,192 - INFO - [TELEGRAM BOT] Фото-сповіщення заплановано | photo: 'E:\\personalproject\\bachelor\\logs\\fragments\\accidents\\accident_20260318_164106_219103_frame123.jpg'
-2026-03-18 16:41:07,193 - INFO - [NOTIFICATION SCHEDULED] IDs={'4'} delay=4.0s
-2026-03-18 16:41:09,032 - INFO - [FRAME 124] CONFIRMED ACCIDENT | ID=4 | SCORE=0.84
-2026-03-18 16:41:09,032 - INFO - [FRAME 124] ✅ CONFIRMED ACCIDENT | ID=4 | cnn_score=0.8438 | eff_score=0.8674 | lstm_risk=0.3343 | lstm_boost=0.0236 | kinematic=True | lstm_flag=True | sudden_stop=False
-2026-03-18 16:41:10,862 - INFO - [FRAME 125] CONFIRMED ACCIDENT | ID=4 | SCORE=0.85
-2026-03-18 16:41:10,862 - INFO - [FRAME 125] ✅ CONFIRMED ACCIDENT | ID=4 | cnn_score=0.8467 | eff_score=0.8734 | lstm_risk=0.3550 | lstm_boost=0.0267 | kinematic=True | lstm_flag=True | sudden_stop=False
-2026-03-18 16:41:13,621 - INFO - [FRAME 126] CONFIRMED ACCIDENT | ID=4 | SCORE=0.90
-2026-03-18 16:41:13,622 - INFO - [FRAME 126] ✅ CONFIRMED ACCIDENT | ID=4 | cnn_score=0.8992 | eff_score=0.9255 | lstm_risk=0.3423 | lstm_boost=0.0263 | kinematic=True | lstm_flag=True | sudden_stop=False
-2026-03-18 16:41:14,172 - INFO - [TELEGRAM BOT] Фото ДТП відправлено успішно.
-2026-03-18 16:41:15,464 - INFO - [FRAME 127] CONFIRMED ACCIDENT | ID=4 | SCORE=0.69
-2026-03-18 16:41:15,464 - INFO - [FRAME 127] ✅ CONFIRMED ACCIDENT | ID=4 | cnn_score=0.6917 | eff_score=0.7074 | lstm_risk=0.3013 | lstm_boost=0.0157 | kinematic=True | lstm_flag=True | sudden_stop=False
-2026-03-18 16:41:17,136 - INFO - [FRAME 128] CONFIRMED ACCIDENT | ID=4 | SCORE=0.60
-2026-03-18 16:41:17,136 - INFO - [FRAME 128] ✅ CONFIRMED ACCIDENT | ID=4 | cnn_score=0.6022 | eff_score=0.6225 | lstm_risk=0.3674 | lstm_boost=0.0203 | kinematic=True | lstm_flag=True | sudden_stop=False
-2026-03-18 16:41:19,158 - INFO - [FRAME 129] CONFIRMED ACCIDENT | ID=4 | SCORE=0.86
-2026-03-18 16:41:19,159 - INFO - [FRAME 129] ✅ CONFIRMED ACCIDENT | ID=4 | cnn_score=0.8592 | eff_score=0.8753 | lstm_risk=0.2733 | lstm_boost=0.0160 | kinematic=True | lstm_flag=True | sudden_stop=False
-2026-03-18 16:41:20,823 - INFO - [FRAME 130] CONFIRMED ACCIDENT | ID=4 | SCORE=0.90
-2026-03-18 16:41:20,823 - INFO - [FRAME 130] ✅ CONFIRMED ACCIDENT | ID=4 | cnn_score=0.8975 | eff_score=0.9071 | lstm_risk=0.2072 | lstm_boost=0.0096 | kinematic=True | lstm_flag=True | sudden_stop=False
-2026-03-18 16:41:22,410 - INFO - [FRAME 131] CONFIRMED ACCIDENT | ID=4 | SCORE=0.94
-2026-03-18 16:41:22,411 - INFO - [FRAME 131] ✅ CONFIRMED ACCIDENT | ID=4 | cnn_score=0.9442 | eff_score=0.9656 | lstm_risk=0.3010 | lstm_boost=0.0214 | kinematic=True | lstm_flag=True | sudden_stop=False
-2026-03-18 16:41:24,282 - INFO - [FRAME 132] CONFIRMED ACCIDENT | ID=4 | SCORE=0.94
-2026-03-18 16:41:24,282 - INFO - [FRAME 132] ✅ CONFIRMED ACCIDENT | ID=4 | cnn_score=0.9440 | eff_score=0.9542 | lstm_risk=0.2074 | lstm_boost=0.0102 | kinematic=True | lstm_flag=True | sudden_stop=False
-2026-03-18 16:41:26,041 - INFO - [FRAME 133] CONFIRMED ACCIDENT | ID=4 | SCORE=0.92
-2026-03-18 16:41:26,041 - INFO - [FRAME 133] ✅ CONFIRMED ACCIDENT | ID=4 | cnn_score=0.9151 | eff_score=0.9330 | lstm_risk=0.2798 | lstm_boost=0.0179 | kinematic=True | lstm_flag=True | sudden_stop=False
-2026-03-18 16:41:27,769 - INFO - [FRAME 134] CONFIRMED ACCIDENT | ID=4 | SCORE=0.53
-2026-03-18 16:41:27,770 - INFO - [FRAME 134] ✅ CONFIRMED ACCIDENT | ID=4 | cnn_score=0.5308 | eff_score=0.5438 | lstm_risk=0.3120 | lstm_boost=0.0129 | kinematic=True | lstm_flag=True | sudden_stop=False
-2026-03-18 16:41:29,342 - INFO - [FRAME 135] CONFIRMED ACCIDENT | ID=4 | SCORE=0.72
-2026-03-18 16:41:29,670 - INFO - [FRAME 135] ✅ CONFIRMED ACCIDENT | ID=4 | cnn_score=0.7151 | eff_score=0.7316 | lstm_risk=0.3041 | lstm_boost=0.0165 | kinematic=True | lstm_flag=True | sudden_stop=False
-2026-03-18 16:41:31,329 - INFO - [FRAME 136] CONFIRMED ACCIDENT | ID=4 | SCORE=0.82
-2026-03-18 16:41:31,329 - INFO - [FRAME 136] ✅ CONFIRMED ACCIDENT | ID=4 | cnn_score=0.8180 | eff_score=0.8358 | lstm_risk=0.2955 | lstm_boost=0.0179 | kinematic=True | lstm_flag=True | sudden_stop=False
-2026-03-18 16:41:33,005 - INFO - [FRAME 137] CONFIRMED ACCIDENT | ID=4 | SCORE=0.91
-2026-03-18 16:41:33,005 - INFO - [FRAME 137] ✅ CONFIRMED ACCIDENT | ID=4 | cnn_score=0.9111 | eff_score=0.9141 | lstm_risk=0.1161 | lstm_boost=0.0031 | kinematic=True | lstm_flag=True | sudden_stop=False
-2026-03-18 16:44:09,503 - CRITICAL - [VideoBuffer] Кліп збережено: E:\personalproject\bachelor\logs\fragments\clip\accident_clip_0001_f123.mp4 (238 кадрів)
-2026-03-18 16:46:30,181 - INFO - [TELEGRAM BOT] Очікуємо відправку 1 сповіщень (max 180с)...
-2026-03-18 16:46:30,184 - INFO - [TELEGRAM BOT] Всі сповіщення відправлено.
-2026-03-18 16:46:38,046 - INFO - Processing finished. Output: E:\personalproject\bachelor\logs\fragments\result.mp4
+2026-03-27 16:53:47,355 - INFO - AccidentClassifier завантажено | класи=['Accident', 'Non Accident'] | device=cpu
+2026-03-27 16:53:49,509 - INFO - MobileNetV2 Embedder for Deep Sort initialised
+2026-03-27 16:53:49,509 - INFO - - gpu enabled: False
+2026-03-27 16:53:49,509 - INFO - - half precision: False
+2026-03-27 16:53:49,509 - INFO - - max batch size: 16
+2026-03-27 16:53:49,509 - INFO - - expects BGR: True
+2026-03-27 16:53:49,790 - INFO - DeepSort Tracker initialised
+2026-03-27 16:53:49,790 - INFO - - max age: 45
+2026-03-27 16:53:49,790 - INFO - - appearance threshold: 0.3
+2026-03-27 16:53:49,790 - INFO - - nms threshold: 0.4
+2026-03-27 16:53:49,790 - INFO - - max num of appearance features: 30
+2026-03-27 16:53:49,790 - INFO - - overriding track class : No
+2026-03-27 16:53:49,790 - INFO - - today given : No
+2026-03-27 16:53:49,790 - INFO - - in-build embedder : Yes
+2026-03-27 16:53:49,790 - INFO - - polygon detections : No
+2026-03-27 16:53:49,790 - INFO - Моделі YOLO та СNN завантажилися
+2026-03-27 16:53:49,790 - INFO - Класифікатор завантажено | класи=['Accident', 'Non Accident'] | device=cpu
+2026-03-27 16:53:49,853 - INFO - [LSTM] MotionLSTM завантажено | obs=20 pred=30
+2026-03-27 16:53:49,853 - INFO - Models loaded successfully. MotionLSTM: ON
+2026-03-27 16:53:50,403 - INFO - [EVAL] Збір даних увімкнено → E:\personalproject\bachelor\logs\evaluation\accident_video_v7
+2026-03-27 16:53:50,403 - INFO - Starting processing: 449 frames | LSTM: ON
+2026-03-27 16:59:40,530 - INFO - [FRAME 280] ⚠️  WARNING | ID=1 | cnn_score=0.8102 | eff_score=0.8797 | lstm_risk=0.5854 | kinematic=True | lstm_flag=True | sudden_stop=False
+2026-03-27 16:59:55,810 - INFO - [FRAME 290] ⚠️  WARNING | ID=2 | cnn_score=0.8605 | eff_score=0.9063 | lstm_risk=0.4613 | kinematic=True | lstm_flag=True | sudden_stop=False
+2026-03-27 16:59:57,611 - WARNING - [FRAME 291] NEW ACCIDENT | ID=2 | SCORE=0.93
+2026-03-27 16:59:57,611 - WARNING - [FRAME 291] 🚨 NEW ACCIDENT DETECTED | ID=2 | cnn_score=0.9345 | eff_score=0.9689 | lstm_risk=0.3837 | lstm_boost=0.0344 | kinematic=True | lstm_flag=True | sudden_stop=False | bbox=(205,352,327,467) | threshold=0.90CNN=0.935 | Eff=0.969 | LSTM_Risk: 0.384 | Kinematic: YES | SuddenStop=False | BBox=(205,352,327,467)
+2026-03-27 16:59:57,642 - INFO - [VideoBuffer] Тригер на кадрі 291 → E:\personalproject\bachelor\logs\fragments\clip\accident_clip_0001_f291.mp4
+2026-03-27 16:59:57,642 - CRITICAL - [ACCIDENT SAVED] Frame 291 | Vehicles: 2 | Severity: 🔴CRITICAL | Photo: E:\personalproject\bachelor\logs\fragments\accidents\accident_20260327_165957_611682_frame291.jpg | Video: E:\personalproject\bachelor\logs\fragments\clip\accident_clip_0001_f291.mp4
+2026-03-27 16:59:57,642 - CRITICAL - [ACCIDENT SAVED] Frame=291 | Vehicles=2 (primary=1 secondary=1) | Severity=🔴CRITICAL | max_conf=0.9690 | avg_conf=0.6490 | timestamp=00:09 | Photo=E:\personalproject\bachelor\logs\fragments\accidents\accident_20260327_165957_611682_frame291.jpg | Video=E:\personalproject\bachelor\logs\fragments\clip\accident_clip_0001_f291.mp4
+2026-03-27 16:59:57,642 - INFO - [TELEGRAM BOT] Фото-сповіщення заплановано | photo: 'E:\\personalproject\\bachelor\\logs\\fragments\\accidents\\accident_20260327_165957_611682_frame291.jpg'
+2026-03-27 16:59:57,642 - INFO - [NOTIFICATION SCHEDULED] IDs={'2'} delay=4.0s
+2026-03-27 16:59:59,313 - INFO - [FRAME 292] CONFIRMED ACCIDENT | ID=2 | SCORE=0.79
+2026-03-27 16:59:59,313 - INFO - [FRAME 292] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.7861 | eff_score=0.8187 | lstm_risk=0.4070 | lstm_boost=0.0326 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.786 | Eff=0.819 | LSTM_Risk: 0.407 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:00,918 - INFO - [FRAME 293] CONFIRMED ACCIDENT | ID=2 | SCORE=0.90
+2026-03-27 17:00:00,918 - INFO - [FRAME 293] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9007 | eff_score=0.9269 | lstm_risk=0.3406 | lstm_boost=0.0261 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.901 | Eff=0.927 | LSTM_Risk: 0.341 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:02,677 - INFO - [FRAME 294] CONFIRMED ACCIDENT | ID=2 | SCORE=0.92
+2026-03-27 17:00:02,677 - INFO - [FRAME 294] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9169 | eff_score=0.9393 | lstm_risk=0.3126 | lstm_boost=0.0224 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.917 | Eff=0.939 | LSTM_Risk: 0.313 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:02,991 - INFO - [TELEGRAM BOT] Фото ДТП відправлено успішно.
+2026-03-27 17:00:04,325 - INFO - [FRAME 295] CONFIRMED ACCIDENT | ID=2 | SCORE=0.82
+2026-03-27 17:00:04,325 - INFO - [FRAME 295] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8223 | eff_score=0.8378 | lstm_risk=0.2747 | lstm_boost=0.0155 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.822 | Eff=0.838 | LSTM_Risk: 0.275 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:06,011 - INFO - [FRAME 296] CONFIRMED ACCIDENT | ID=2 | SCORE=0.76
+2026-03-27 17:00:06,011 - INFO - [FRAME 296] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.7631 | eff_score=0.7749 | lstm_risk=0.2485 | lstm_boost=0.0118 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.763 | Eff=0.775 | LSTM_Risk: 0.248 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:07,641 - INFO - [FRAME 297] CONFIRMED ACCIDENT | ID=2 | SCORE=0.46
+2026-03-27 17:00:07,641 - INFO - [FRAME 297] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.4552 | eff_score=0.4602 | lstm_risk=0.2107 | lstm_boost=0.0051 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.455 | Eff=0.460 | LSTM_Risk: 0.211 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:09,083 - INFO - [FRAME 298] CONFIRMED ACCIDENT | ID=2 | SCORE=0.84
+2026-03-27 17:00:09,083 - INFO - [FRAME 298] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8392 | eff_score=0.8455 | lstm_risk=0.1728 | lstm_boost=0.0063 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.839 | Eff=0.845 | LSTM_Risk: 0.173 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:10,666 - INFO - [FRAME 299] CONFIRMED ACCIDENT | ID=2 | SCORE=0.61
+2026-03-27 17:00:10,666 - INFO - [FRAME 299] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.6106 | eff_score=0.6165 | lstm_risk=0.1961 | lstm_boost=0.0059 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.611 | Eff=0.616 | LSTM_Risk: 0.196 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:12,452 - INFO - [FRAME 300] CONFIRMED ACCIDENT | ID=2 | SCORE=0.82
+2026-03-27 17:00:12,452 - INFO - [FRAME 300] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8187 | eff_score=0.8237 | lstm_risk=0.1558 | lstm_boost=0.0050 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.819 | Eff=0.824 | LSTM_Risk: 0.156 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:13,848 - INFO - [FRAME 301] CONFIRMED ACCIDENT | ID=2 | SCORE=0.94
+2026-03-27 17:00:13,848 - INFO - [FRAME 301] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9360 | eff_score=0.9393 | lstm_risk=0.1179 | lstm_boost=0.0033 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.936 | Eff=0.939 | LSTM_Risk: 0.118 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:15,368 - INFO - [FRAME 302] CONFIRMED ACCIDENT | ID=2 | SCORE=0.96
+2026-03-27 17:00:15,368 - INFO - [FRAME 302] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9565 | eff_score=0.9583 | lstm_risk=0.0871 | lstm_boost=0.0018 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.956 | Eff=0.958 | LSTM_Risk: 0.087 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:17,051 - INFO - [FRAME 303] ⚠️  WARNING | ID=1 | cnn_score=0.8687 | eff_score=0.8687 | lstm_risk=0.0000 | kinematic=True | lstm_flag=False | sudden_stop=False
+2026-03-27 17:00:17,051 - INFO - [FRAME 303] CONFIRMED ACCIDENT | ID=2 | SCORE=0.51
+2026-03-27 17:00:17,051 - INFO - [FRAME 303] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.5072 | eff_score=0.5072 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=True | lstm_flag=False | sudden_stop=FalseCNN=0.507 | Eff=0.507 | LSTM_Risk: 0.000 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:18,549 - INFO - [FRAME 304] CONFIRMED ACCIDENT | ID=2 | SCORE=0.28
+2026-03-27 17:00:18,549 - INFO - [FRAME 304] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.2762 | eff_score=0.2762 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.276 | Eff=0.276 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:00:19,959 - INFO - [FRAME 305] CONFIRMED ACCIDENT | ID=2 | SCORE=0.33
+2026-03-27 17:00:19,959 - INFO - [FRAME 305] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.3257 | eff_score=0.3257 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.326 | Eff=0.326 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:00:21,448 - INFO - [FRAME 306] CONFIRMED ACCIDENT | ID=2 | SCORE=0.45
+2026-03-27 17:00:21,448 - INFO - [FRAME 306] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.4495 | eff_score=0.4495 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.450 | Eff=0.450 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:00:22,796 - INFO - [FRAME 307] CONFIRMED ACCIDENT | ID=2 | SCORE=0.24
+2026-03-27 17:00:22,796 - INFO - [FRAME 307] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.2370 | eff_score=0.2370 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.237 | Eff=0.237 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:00:24,392 - INFO - [FRAME 308] CONFIRMED ACCIDENT | ID=2 | SCORE=0.15
+2026-03-27 17:00:24,392 - INFO - [FRAME 308] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.1516 | eff_score=0.1516 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.152 | Eff=0.152 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:00:26,012 - INFO - [FRAME 309] CONFIRMED ACCIDENT | ID=2 | SCORE=0.16
+2026-03-27 17:00:26,012 - INFO - [FRAME 309] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.1557 | eff_score=0.1557 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.156 | Eff=0.156 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:00:27,753 - INFO - [FRAME 310] CONFIRMED ACCIDENT | ID=2 | SCORE=0.21
+2026-03-27 17:00:27,753 - INFO - [FRAME 310] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.2066 | eff_score=0.2264 | lstm_risk=0.6188 | lstm_boost=0.0198 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.207 | Eff=0.226 | LSTM_Risk: 0.619 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:29,809 - INFO - [FRAME 311] LSTM high-risk: {'2': 0.98, '1': 0.98}
+2026-03-27 17:00:30,168 - INFO - [FRAME 311] CONFIRMED ACCIDENT | ID=2 | SCORE=0.13
+2026-03-27 17:00:30,168 - INFO - [FRAME 311] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.1321 | eff_score=0.5168 | lstm_risk=0.9850 | lstm_boost=0.3847 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.132 | Eff=0.517 | LSTM_Risk: 0.985 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:31,640 - INFO - [FRAME 312] LSTM high-risk: {'2': 0.88, '1': 0.88}
+2026-03-27 17:00:31,953 - INFO - [FRAME 312] CONFIRMED ACCIDENT | ID=2 | SCORE=0.28
+2026-03-27 17:00:31,953 - INFO - [FRAME 312] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.2796 | eff_score=0.5649 | lstm_risk=0.8800 | lstm_boost=0.2853 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.280 | Eff=0.565 | LSTM_Risk: 0.880 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:33,629 - INFO - [FRAME 313] LSTM high-risk: {'2': 0.82, '1': 0.82}
+2026-03-27 17:00:34,007 - INFO - [FRAME 313] CONFIRMED ACCIDENT | ID=2 | SCORE=0.41
+2026-03-27 17:00:34,007 - INFO - [FRAME 313] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.4088 | eff_score=0.4769 | lstm_risk=0.8163 | lstm_boost=0.0681 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.409 | Eff=0.477 | LSTM_Risk: 0.816 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:35,536 - INFO - [FRAME 314] LSTM high-risk: {'2': 0.73, '1': 0.73}
+2026-03-27 17:00:36,105 - INFO - [FRAME 314] CONFIRMED ACCIDENT | ID=2 | SCORE=0.81
+2026-03-27 17:00:36,105 - INFO - [FRAME 314] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8122 | eff_score=0.9207 | lstm_risk=0.7308 | lstm_boost=0.1084 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.812 | Eff=0.921 | LSTM_Risk: 0.731 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:37,420 - INFO - [FRAME 315] LSTM high-risk: {'2': 0.73, '1': 0.73}
+2026-03-27 17:00:37,717 - INFO - [FRAME 315] CONFIRMED ACCIDENT | ID=2 | SCORE=0.86
+2026-03-27 17:00:37,717 - INFO - [FRAME 315] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8637 | eff_score=0.9778 | lstm_risk=0.7270 | lstm_boost=0.1141 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.864 | Eff=0.978 | LSTM_Risk: 0.727 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:39,003 - INFO - [FRAME 316] LSTM high-risk: {'2': 0.79, '1': 0.79}
+2026-03-27 17:00:39,278 - INFO - [FRAME 316] CONFIRMED ACCIDENT | ID=2 | SCORE=0.63
+2026-03-27 17:00:39,278 - INFO - [FRAME 316] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.6282 | eff_score=0.7264 | lstm_risk=0.7908 | lstm_boost=0.0982 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.628 | Eff=0.726 | LSTM_Risk: 0.791 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:40,694 - INFO - [FRAME 317] CONFIRMED ACCIDENT | ID=2 | SCORE=0.38
+2026-03-27 17:00:40,694 - INFO - [FRAME 317] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.3755 | eff_score=0.4009 | lstm_risk=0.5199 | lstm_boost=0.0254 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.375 | Eff=0.401 | LSTM_Risk: 0.520 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:42,396 - INFO - [FRAME 318] CONFIRMED ACCIDENT | ID=2 | SCORE=0.51
+2026-03-27 17:00:42,396 - INFO - [FRAME 318] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.5113 | eff_score=0.5446 | lstm_risk=0.5108 | lstm_boost=0.0334 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.511 | Eff=0.545 | LSTM_Risk: 0.511 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:43,726 - INFO - [FRAME 319] LSTM high-risk: {'2': 0.77, '1': 0.77}
+2026-03-27 17:00:44,004 - INFO - [FRAME 319] CONFIRMED ACCIDENT | ID=2 | SCORE=0.75
+2026-03-27 17:00:44,004 - INFO - [FRAME 319] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.7469 | eff_score=0.8568 | lstm_risk=0.7672 | lstm_boost=0.1099 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.747 | Eff=0.857 | LSTM_Risk: 0.767 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:45,284 - INFO - [FRAME 320] LSTM high-risk: {'2': 0.83, '1': 0.83}
+2026-03-27 17:00:45,508 - WARNING - [FRAME 320] NEW ACCIDENT | ID=1 | SCORE=0.86
+2026-03-27 17:00:45,508 - WARNING - [FRAME 320] 🚨 NEW ACCIDENT DETECTED | ID=1 | cnn_score=0.8646 | eff_score=1.0000 | lstm_risk=0.8325 | lstm_boost=0.1498 | kinematic=True | lstm_flag=True | sudden_stop=False | bbox=(159,408,369,538) | threshold=0.90CNN=0.865 | Eff=1.000 | LSTM_Risk: 0.833 | Kinematic: YES | SuddenStop=False | BBox=(159,408,369,538)
+2026-03-27 17:00:45,508 - INFO - [FRAME 320] CONFIRMED ACCIDENT | ID=2 | SCORE=0.92
+2026-03-27 17:00:45,508 - INFO - [FRAME 320] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9204 | eff_score=1.0000 | lstm_risk=0.8325 | lstm_boost=0.1595 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.920 | Eff=1.000 | LSTM_Risk: 0.833 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:47,432 - INFO - [FRAME 321] CONFIRMED ACCIDENT | ID=1 | SCORE=0.74
+2026-03-27 17:00:47,432 - INFO - [FRAME 321] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.7396 | eff_score=0.8227 | lstm_risk=0.6705 | lstm_boost=0.0831 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.740 | Eff=0.823 | LSTM_Risk: 0.671 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:47,432 - INFO - [FRAME 321] CONFIRMED ACCIDENT | ID=2 | SCORE=0.89
+2026-03-27 17:00:47,448 - INFO - [FRAME 321] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8927 | eff_score=0.9931 | lstm_risk=0.6705 | lstm_boost=0.1003 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.893 | Eff=0.993 | LSTM_Risk: 0.671 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:49,096 - INFO - [FRAME 322] LSTM high-risk: {'2': 0.83, '1': 0.83}
+2026-03-27 17:00:49,427 - INFO - [FRAME 322] CONFIRMED ACCIDENT | ID=1 | SCORE=0.92
+2026-03-27 17:00:49,427 - INFO - [FRAME 322] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.9225 | eff_score=1.0000 | lstm_risk=0.8305 | lstm_boost=0.1591 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.923 | Eff=1.000 | LSTM_Risk: 0.831 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:49,427 - INFO - [FRAME 322] CONFIRMED ACCIDENT | ID=2 | SCORE=0.99
+2026-03-27 17:00:49,427 - INFO - [FRAME 322] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9865 | eff_score=1.0000 | lstm_risk=0.8305 | lstm_boost=0.1701 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.986 | Eff=1.000 | LSTM_Risk: 0.831 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:49,464 - CRITICAL - [ACCIDENT SAVED] Frame 322 | Vehicles: 2 | Severity: 🔴CRITICAL | Photo: E:\personalproject\bachelor\logs\fragments\accidents\accident_20260327_170049_443559_frame322.jpg | Video: None
+2026-03-27 17:00:49,464 - CRITICAL - [ACCIDENT SAVED] Frame=322 | Vehicles=2 (primary=2 secondary=0) | Severity=🔴CRITICAL | max_conf=1.0000 | avg_conf=1.0000 | timestamp=00:10 | Photo=E:\personalproject\bachelor\logs\fragments\accidents\accident_20260327_170049_443559_frame322.jpg | Video=None
+2026-03-27 17:00:49,479 - INFO - [TELEGRAM BOT] Фото-сповіщення заплановано | photo: 'E:\\personalproject\\bachelor\\logs\\fragments\\accidents\\accident_20260327_170049_443559_frame322.jpg'
+2026-03-27 17:00:49,479 - INFO - [NOTIFICATION SCHEDULED] IDs={'1'} delay=4.0s
+2026-03-27 17:00:51,814 - INFO - [FRAME 323] CONFIRMED ACCIDENT | ID=1 | SCORE=0.30
+2026-03-27 17:00:51,814 - INFO - [FRAME 323] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.3048 | eff_score=0.3242 | lstm_risk=0.5048 | lstm_boost=0.0194 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.305 | Eff=0.324 | LSTM_Risk: 0.505 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:51,815 - INFO - [FRAME 323] CONFIRMED ACCIDENT | ID=2 | SCORE=0.50
+2026-03-27 17:00:51,815 - INFO - [FRAME 323] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.5034 | eff_score=0.5354 | lstm_risk=0.5048 | lstm_boost=0.0321 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.503 | Eff=0.535 | LSTM_Risk: 0.505 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:53,668 - INFO - [FRAME 324] CONFIRMED ACCIDENT | ID=1 | SCORE=0.63
+2026-03-27 17:00:53,669 - INFO - [FRAME 324] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.6271 | eff_score=0.6659 | lstm_risk=0.4975 | lstm_boost=0.0388 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.627 | Eff=0.666 | LSTM_Risk: 0.497 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:53,669 - INFO - [FRAME 324] CONFIRMED ACCIDENT | ID=2 | SCORE=0.66
+2026-03-27 17:00:53,669 - INFO - [FRAME 324] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.6564 | eff_score=0.6971 | lstm_risk=0.4975 | lstm_boost=0.0406 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.656 | Eff=0.697 | LSTM_Risk: 0.497 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:54,778 - INFO - [TELEGRAM BOT] Фото ДТП відправлено успішно.
+2026-03-27 17:00:55,563 - INFO - [FRAME 325] CONFIRMED ACCIDENT | ID=1 | SCORE=0.66
+2026-03-27 17:00:55,563 - INFO - [FRAME 325] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.6607 | eff_score=0.7053 | lstm_risk=0.5198 | lstm_boost=0.0446 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.661 | Eff=0.705 | LSTM_Risk: 0.520 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:55,564 - INFO - [FRAME 325] CONFIRMED ACCIDENT | ID=2 | SCORE=0.59
+2026-03-27 17:00:55,564 - INFO - [FRAME 325] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.5867 | eff_score=0.6263 | lstm_risk=0.5198 | lstm_boost=0.0396 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.587 | Eff=0.626 | LSTM_Risk: 0.520 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:57,060 - INFO - [FRAME 326] CONFIRMED ACCIDENT | ID=1 | SCORE=0.65
+2026-03-27 17:00:57,060 - INFO - [FRAME 326] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.6461 | eff_score=0.7004 | lstm_risk=0.5799 | lstm_boost=0.0543 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.646 | Eff=0.700 | LSTM_Risk: 0.580 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:57,060 - INFO - [FRAME 326] CONFIRMED ACCIDENT | ID=2 | SCORE=0.37
+2026-03-27 17:00:57,060 - INFO - [FRAME 326] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.3686 | eff_score=0.3996 | lstm_risk=0.5799 | lstm_boost=0.0310 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.369 | Eff=0.400 | LSTM_Risk: 0.580 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:58,369 - INFO - [FRAME 327] LSTM high-risk: {'2': 0.73, '1': 0.73}
+2026-03-27 17:00:58,656 - INFO - [FRAME 327] CONFIRMED ACCIDENT | ID=1 | SCORE=0.60
+2026-03-27 17:00:58,656 - INFO - [FRAME 327] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.6024 | eff_score=0.6818 | lstm_risk=0.7261 | lstm_boost=0.0794 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.602 | Eff=0.682 | LSTM_Risk: 0.726 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:58,656 - INFO - [FRAME 327] CONFIRMED ACCIDENT | ID=2 | SCORE=0.77
+2026-03-27 17:00:58,656 - INFO - [FRAME 327] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.7742 | eff_score=0.8762 | lstm_risk=0.7261 | lstm_boost=0.1020 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.774 | Eff=0.876 | LSTM_Risk: 0.726 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:00:59,991 - INFO - [FRAME 328] LSTM high-risk: {'2': 0.74, '1': 0.74}
+2026-03-27 17:01:00,300 - INFO - [FRAME 328] CONFIRMED ACCIDENT | ID=1 | SCORE=0.90
+2026-03-27 17:01:00,300 - INFO - [FRAME 328] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.8964 | eff_score=1.0000 | lstm_risk=0.7395 | lstm_boost=0.1226 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.896 | Eff=1.000 | LSTM_Risk: 0.740 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:00,300 - INFO - [FRAME 328] CONFIRMED ACCIDENT | ID=2 | SCORE=0.97
+2026-03-27 17:01:00,300 - INFO - [FRAME 328] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9698 | eff_score=1.0000 | lstm_risk=0.7395 | lstm_boost=0.1326 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.970 | Eff=1.000 | LSTM_Risk: 0.740 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:02,024 - INFO - [FRAME 329] CONFIRMED ACCIDENT | ID=1 | SCORE=0.63
+2026-03-27 17:01:02,024 - INFO - [FRAME 329] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.6335 | eff_score=0.7028 | lstm_risk=0.6614 | lstm_boost=0.0693 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.633 | Eff=0.703 | LSTM_Risk: 0.661 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:02,040 - INFO - [FRAME 329] CONFIRMED ACCIDENT | ID=2 | SCORE=0.91
+2026-03-27 17:01:02,040 - INFO - [FRAME 329] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9139 | eff_score=1.0000 | lstm_risk=0.6614 | lstm_boost=0.0999 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.914 | Eff=1.000 | LSTM_Risk: 0.661 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:03,839 - INFO - [FRAME 330] CONFIRMED ACCIDENT | ID=1 | SCORE=0.86
+2026-03-27 17:01:03,839 - INFO - [FRAME 330] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.8632 | eff_score=0.9346 | lstm_risk=0.5755 | lstm_boost=0.0715 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.863 | Eff=0.935 | LSTM_Risk: 0.575 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:03,839 - INFO - [FRAME 330] CONFIRMED ACCIDENT | ID=2 | SCORE=0.88
+2026-03-27 17:01:03,839 - INFO - [FRAME 330] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8811 | eff_score=0.9540 | lstm_risk=0.5755 | lstm_boost=0.0729 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.881 | Eff=0.954 | LSTM_Risk: 0.575 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:05,798 - INFO - [FRAME 331] CONFIRMED ACCIDENT | ID=1 | SCORE=0.83
+2026-03-27 17:01:05,798 - INFO - [FRAME 331] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.8307 | eff_score=0.9040 | lstm_risk=0.5945 | lstm_boost=0.0734 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.831 | Eff=0.904 | LSTM_Risk: 0.594 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:05,798 - INFO - [FRAME 331] CONFIRMED ACCIDENT | ID=2 | SCORE=0.93
+2026-03-27 17:01:05,798 - INFO - [FRAME 331] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9308 | eff_score=1.0000 | lstm_risk=0.5945 | lstm_boost=0.0822 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.931 | Eff=1.000 | LSTM_Risk: 0.594 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:07,554 - INFO - [FRAME 332] CONFIRMED ACCIDENT | ID=1 | SCORE=0.42
+2026-03-27 17:01:07,554 - INFO - [FRAME 332] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.4163 | eff_score=0.4542 | lstm_risk=0.6035 | lstm_boost=0.0379 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.416 | Eff=0.454 | LSTM_Risk: 0.604 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:07,554 - INFO - [FRAME 332] CONFIRMED ACCIDENT | ID=2 | SCORE=0.84
+2026-03-27 17:01:07,554 - INFO - [FRAME 332] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8446 | eff_score=0.9215 | lstm_risk=0.6035 | lstm_boost=0.0769 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.845 | Eff=0.922 | LSTM_Risk: 0.604 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:09,327 - INFO - [FRAME 333] CONFIRMED ACCIDENT | ID=1 | SCORE=0.82
+2026-03-27 17:01:09,327 - INFO - [FRAME 333] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.8177 | eff_score=0.9095 | lstm_risk=0.6700 | lstm_boost=0.0918 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.818 | Eff=0.910 | LSTM_Risk: 0.670 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:09,327 - INFO - [FRAME 333] CONFIRMED ACCIDENT | ID=2 | SCORE=0.84
+2026-03-27 17:01:09,327 - INFO - [FRAME 333] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8392 | eff_score=0.9334 | lstm_risk=0.6700 | lstm_boost=0.0942 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.839 | Eff=0.933 | LSTM_Risk: 0.670 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:10,664 - INFO - [FRAME 334] LSTM high-risk: {'2': 0.92, '1': 0.92}
+2026-03-27 17:01:10,968 - INFO - [FRAME 334] CONFIRMED ACCIDENT | ID=1 | SCORE=0.83
+2026-03-27 17:01:10,968 - INFO - [FRAME 334] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.8271 | eff_score=0.8990 | lstm_risk=0.9235 | lstm_boost=0.0719 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.827 | Eff=0.899 | LSTM_Risk: 0.924 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:10,985 - INFO - [FRAME 334] CONFIRMED ACCIDENT | ID=2 | SCORE=0.92
+2026-03-27 17:01:10,985 - INFO - [FRAME 334] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9201 | eff_score=0.9533 | lstm_risk=0.9235 | lstm_boost=0.0332 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.920 | Eff=0.953 | LSTM_Risk: 0.924 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:12,600 - INFO - [FRAME 335] CONFIRMED ACCIDENT | ID=1 | SCORE=0.28
+2026-03-27 17:01:12,600 - INFO - [FRAME 335] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2775 | eff_score=0.2994 | lstm_risk=0.5617 | lstm_boost=0.0219 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.278 | Eff=0.299 | LSTM_Risk: 0.562 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:12,600 - INFO - [FRAME 335] CONFIRMED ACCIDENT | ID=2 | SCORE=0.82
+2026-03-27 17:01:12,600 - INFO - [FRAME 335] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8238 | eff_score=0.8887 | lstm_risk=0.5617 | lstm_boost=0.0650 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.824 | Eff=0.889 | LSTM_Risk: 0.562 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:14,292 - INFO - [FRAME 336] CONFIRMED ACCIDENT | ID=1 | SCORE=0.37
+2026-03-27 17:01:14,292 - INFO - [FRAME 336] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.3665 | eff_score=0.3938 | lstm_risk=0.5460 | lstm_boost=0.0273 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.366 | Eff=0.394 | LSTM_Risk: 0.546 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:14,292 - INFO - [FRAME 336] CONFIRMED ACCIDENT | ID=2 | SCORE=0.85
+2026-03-27 17:01:14,292 - INFO - [FRAME 336] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8467 | eff_score=0.9098 | lstm_risk=0.5460 | lstm_boost=0.0631 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.847 | Eff=0.910 | LSTM_Risk: 0.546 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:15,921 - INFO - [FRAME 337] CONFIRMED ACCIDENT | ID=1 | SCORE=0.17
+2026-03-27 17:01:15,921 - INFO - [FRAME 337] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.1680 | eff_score=0.1797 | lstm_risk=0.5275 | lstm_boost=0.0117 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.168 | Eff=0.180 | LSTM_Risk: 0.527 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:15,921 - INFO - [FRAME 337] CONFIRMED ACCIDENT | ID=2 | SCORE=0.83
+2026-03-27 17:01:15,921 - INFO - [FRAME 337] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8279 | eff_score=0.8855 | lstm_risk=0.5275 | lstm_boost=0.0576 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.828 | Eff=0.886 | LSTM_Risk: 0.527 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:17,614 - INFO - [FRAME 338] CONFIRMED ACCIDENT | ID=1 | SCORE=0.32
+2026-03-27 17:01:17,629 - INFO - [FRAME 338] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.3182 | eff_score=0.3406 | lstm_risk=0.5308 | lstm_boost=0.0224 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.318 | Eff=0.341 | LSTM_Risk: 0.531 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:17,629 - INFO - [FRAME 338] CONFIRMED ACCIDENT | ID=2 | SCORE=0.87
+2026-03-27 17:01:17,629 - INFO - [FRAME 338] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8735 | eff_score=0.9351 | lstm_risk=0.5308 | lstm_boost=0.0615 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.874 | Eff=0.935 | LSTM_Risk: 0.531 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:19,275 - INFO - [FRAME 339] CONFIRMED ACCIDENT | ID=1 | SCORE=0.18
+2026-03-27 17:01:19,275 - INFO - [FRAME 339] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.1836 | eff_score=0.1961 | lstm_risk=0.5236 | lstm_boost=0.0126 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.184 | Eff=0.196 | LSTM_Risk: 0.524 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:19,275 - INFO - [FRAME 339] CONFIRMED ACCIDENT | ID=2 | SCORE=0.84
+2026-03-27 17:01:19,275 - INFO - [FRAME 339] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8421 | eff_score=0.8998 | lstm_risk=0.5236 | lstm_boost=0.0577 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.842 | Eff=0.900 | LSTM_Risk: 0.524 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:20,895 - INFO - [FRAME 340] CONFIRMED ACCIDENT | ID=1 | SCORE=0.22
+2026-03-27 17:01:20,895 - INFO - [FRAME 340] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2194 | eff_score=0.2337 | lstm_risk=0.5105 | lstm_boost=0.0143 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.219 | Eff=0.234 | LSTM_Risk: 0.511 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:20,895 - INFO - [FRAME 340] CONFIRMED ACCIDENT | ID=2 | SCORE=0.86
+2026-03-27 17:01:20,895 - INFO - [FRAME 340] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8575 | eff_score=0.9134 | lstm_risk=0.5105 | lstm_boost=0.0559 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.858 | Eff=0.913 | LSTM_Risk: 0.511 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:22,478 - INFO - [FRAME 341] CONFIRMED ACCIDENT | ID=1 | SCORE=0.31
+2026-03-27 17:01:22,478 - INFO - [FRAME 341] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.3077 | eff_score=0.3292 | lstm_risk=0.5283 | lstm_boost=0.0215 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.308 | Eff=0.329 | LSTM_Risk: 0.528 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:22,478 - INFO - [FRAME 341] CONFIRMED ACCIDENT | ID=2 | SCORE=0.96
+2026-03-27 17:01:22,478 - INFO - [FRAME 341] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9580 | eff_score=1.0000 | lstm_risk=0.5283 | lstm_boost=0.0668 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.958 | Eff=1.000 | LSTM_Risk: 0.528 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:23,843 - INFO - [FRAME 342] LSTM high-risk: {'2': 0.83, '1': 0.83}
+2026-03-27 17:01:24,143 - INFO - [FRAME 342] CONFIRMED ACCIDENT | ID=1 | SCORE=0.40
+2026-03-27 17:01:24,143 - INFO - [FRAME 342] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.4044 | eff_score=0.4735 | lstm_risk=0.8268 | lstm_boost=0.0691 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.404 | Eff=0.474 | LSTM_Risk: 0.827 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:24,143 - INFO - [FRAME 342] CONFIRMED ACCIDENT | ID=2 | SCORE=0.89
+2026-03-27 17:01:24,160 - INFO - [FRAME 342] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8918 | eff_score=1.0000 | lstm_risk=0.8268 | lstm_boost=0.1524 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.892 | Eff=1.000 | LSTM_Risk: 0.827 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:25,559 - INFO - [FRAME 343] LSTM high-risk: {'2': 0.81, '1': 0.81}
+2026-03-27 17:01:25,802 - INFO - [FRAME 343] CONFIRMED ACCIDENT | ID=1 | SCORE=0.41
+2026-03-27 17:01:25,802 - INFO - [FRAME 343] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.4071 | eff_score=0.4736 | lstm_risk=0.8088 | lstm_boost=0.0666 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.407 | Eff=0.474 | LSTM_Risk: 0.809 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:25,802 - INFO - [FRAME 343] CONFIRMED ACCIDENT | ID=2 | SCORE=0.84
+2026-03-27 17:01:25,802 - INFO - [FRAME 343] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8385 | eff_score=0.9756 | lstm_risk=0.8088 | lstm_boost=0.1371 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.838 | Eff=0.976 | LSTM_Risk: 0.809 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:27,155 - INFO - [FRAME 344] LSTM high-risk: {'2': 0.81, '1': 0.81}
+2026-03-27 17:01:27,441 - INFO - [FRAME 344] CONFIRMED ACCIDENT | ID=1 | SCORE=0.29
+2026-03-27 17:01:27,441 - INFO - [FRAME 344] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2870 | eff_score=0.3346 | lstm_risk=0.8145 | lstm_boost=0.0476 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.287 | Eff=0.335 | LSTM_Risk: 0.814 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:27,441 - INFO - [FRAME 344] CONFIRMED ACCIDENT | ID=2 | SCORE=0.89
+2026-03-27 17:01:27,441 - INFO - [FRAME 344] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8889 | eff_score=1.0000 | lstm_risk=0.8145 | lstm_boost=0.1474 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.889 | Eff=1.000 | LSTM_Risk: 0.814 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:28,685 - INFO - [FRAME 345] LSTM high-risk: {'2': 0.81, '1': 0.81}
+2026-03-27 17:01:29,154 - INFO - [FRAME 345] CONFIRMED ACCIDENT | ID=1 | SCORE=0.42
+2026-03-27 17:01:29,154 - INFO - [FRAME 345] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.4190 | eff_score=0.4881 | lstm_risk=0.8125 | lstm_boost=0.0691 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.419 | Eff=0.488 | LSTM_Risk: 0.812 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:29,154 - INFO - [FRAME 345] CONFIRMED ACCIDENT | ID=2 | SCORE=0.65
+2026-03-27 17:01:29,154 - INFO - [FRAME 345] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.6480 | eff_score=0.7549 | lstm_risk=0.8125 | lstm_boost=0.1069 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.648 | Eff=0.755 | LSTM_Risk: 0.812 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:30,522 - INFO - [FRAME 346] LSTM high-risk: {'2': 0.78, '1': 0.78}
+2026-03-27 17:01:30,800 - INFO - [FRAME 346] CONFIRMED ACCIDENT | ID=1 | SCORE=0.35
+2026-03-27 17:01:30,800 - INFO - [FRAME 346] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.3542 | eff_score=0.4083 | lstm_risk=0.7816 | lstm_boost=0.0541 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.354 | Eff=0.408 | LSTM_Risk: 0.782 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:30,800 - INFO - [FRAME 346] CONFIRMED ACCIDENT | ID=2 | SCORE=0.86
+2026-03-27 17:01:30,800 - INFO - [FRAME 346] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8561 | eff_score=0.9869 | lstm_risk=0.7816 | lstm_boost=0.1307 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.856 | Eff=0.987 | LSTM_Risk: 0.782 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:32,120 - INFO - [FRAME 347] LSTM high-risk: {'2': 0.75, '1': 0.75}
+2026-03-27 17:01:32,393 - INFO - [FRAME 347] CONFIRMED ACCIDENT | ID=1 | SCORE=0.46
+2026-03-27 17:01:32,504 - INFO - [FRAME 347] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.4565 | eff_score=0.5210 | lstm_risk=0.7517 | lstm_boost=0.0645 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.456 | Eff=0.521 | LSTM_Risk: 0.752 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:32,504 - INFO - [FRAME 347] CONFIRMED ACCIDENT | ID=2 | SCORE=0.91
+2026-03-27 17:01:32,504 - INFO - [FRAME 347] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9093 | eff_score=1.0000 | lstm_risk=0.7517 | lstm_boost=0.1285 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.909 | Eff=1.000 | LSTM_Risk: 0.752 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:33,954 - INFO - [FRAME 348] LSTM high-risk: {'2': 0.77, '1': 0.77}
+2026-03-27 17:01:34,254 - INFO - [FRAME 348] CONFIRMED ACCIDENT | ID=1 | SCORE=0.26
+2026-03-27 17:01:34,254 - INFO - [FRAME 348] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2568 | eff_score=0.2949 | lstm_risk=0.7705 | lstm_boost=0.0381 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.257 | Eff=0.295 | LSTM_Risk: 0.771 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:34,254 - INFO - [FRAME 348] CONFIRMED ACCIDENT | ID=2 | SCORE=0.78
+2026-03-27 17:01:34,254 - INFO - [FRAME 348] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.7837 | eff_score=0.9001 | lstm_risk=0.7705 | lstm_boost=0.1163 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.784 | Eff=0.900 | LSTM_Risk: 0.771 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:35,634 - INFO - [FRAME 349] LSTM high-risk: {'2': 0.77, '1': 0.77}
+2026-03-27 17:01:35,919 - INFO - [FRAME 349] CONFIRMED ACCIDENT | ID=1 | SCORE=0.52
+2026-03-27 17:01:35,919 - INFO - [FRAME 349] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.5216 | eff_score=0.5980 | lstm_risk=0.7656 | lstm_boost=0.0764 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.522 | Eff=0.598 | LSTM_Risk: 0.766 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:35,935 - INFO - [FRAME 349] CONFIRMED ACCIDENT | ID=2 | SCORE=0.95
+2026-03-27 17:01:35,935 - INFO - [FRAME 349] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9476 | eff_score=1.0000 | lstm_risk=0.7656 | lstm_boost=0.1388 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.948 | Eff=1.000 | LSTM_Risk: 0.766 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:37,352 - INFO - [FRAME 350] LSTM high-risk: {'2': 0.73, '1': 0.73}
+2026-03-27 17:01:37,652 - INFO - [FRAME 350] CONFIRMED ACCIDENT | ID=1 | SCORE=0.30
+2026-03-27 17:01:37,652 - INFO - [FRAME 350] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.3022 | eff_score=0.3429 | lstm_risk=0.7340 | lstm_boost=0.0407 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.302 | Eff=0.343 | LSTM_Risk: 0.734 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:37,652 - INFO - [FRAME 350] CONFIRMED ACCIDENT | ID=2 | SCORE=0.95
+2026-03-27 17:01:37,652 - INFO - [FRAME 350] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9493 | eff_score=1.0000 | lstm_risk=0.7340 | lstm_boost=0.1279 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.949 | Eff=1.000 | LSTM_Risk: 0.734 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:39,551 - INFO - [FRAME 351] CONFIRMED ACCIDENT | ID=1 | SCORE=0.29
+2026-03-27 17:01:39,551 - INFO - [FRAME 351] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2938 | eff_score=0.3292 | lstm_risk=0.6947 | lstm_boost=0.0354 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.294 | Eff=0.329 | LSTM_Risk: 0.695 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:39,551 - INFO - [FRAME 351] CONFIRMED ACCIDENT | ID=2 | SCORE=0.76
+2026-03-27 17:01:39,551 - INFO - [FRAME 351] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.7550 | eff_score=0.8461 | lstm_risk=0.6947 | lstm_boost=0.0911 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.755 | Eff=0.846 | LSTM_Risk: 0.695 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:41,340 - INFO - [FRAME 352] CONFIRMED ACCIDENT | ID=1 | SCORE=0.67
+2026-03-27 17:01:41,340 - INFO - [FRAME 352] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.6712 | eff_score=0.7481 | lstm_risk=0.6772 | lstm_boost=0.0769 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.671 | Eff=0.748 | LSTM_Risk: 0.677 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:41,340 - INFO - [FRAME 352] CONFIRMED ACCIDENT | ID=2 | SCORE=0.89
+2026-03-27 17:01:41,340 - INFO - [FRAME 352] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8854 | eff_score=0.9869 | lstm_risk=0.6772 | lstm_boost=0.1015 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.885 | Eff=0.987 | LSTM_Risk: 0.677 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:43,130 - INFO - [FRAME 353] CONFIRMED ACCIDENT | ID=1 | SCORE=0.85
+2026-03-27 17:01:43,130 - INFO - [FRAME 353] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.8459 | eff_score=0.9399 | lstm_risk=0.6669 | lstm_boost=0.0940 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.846 | Eff=0.940 | LSTM_Risk: 0.667 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:43,456 - INFO - [FRAME 353] CONFIRMED ACCIDENT | ID=2 | SCORE=0.95
+2026-03-27 17:01:43,456 - INFO - [FRAME 353] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9474 | eff_score=1.0000 | lstm_risk=0.6669 | lstm_boost=0.1053 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.947 | Eff=1.000 | LSTM_Risk: 0.667 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:43,498 - CRITICAL - [ACCIDENT SAVED] Frame 353 | Vehicles: 2 | Severity: 🔴CRITICAL | Photo: E:\personalproject\bachelor\logs\fragments\accidents\accident_20260327_170143_456706_frame353.jpg | Video: None
+2026-03-27 17:01:43,498 - CRITICAL - [ACCIDENT SAVED] Frame=353 | Vehicles=2 (primary=2 secondary=0) | Severity=🔴CRITICAL | max_conf=1.0000 | avg_conf=0.9700 | timestamp=00:11 | Photo=E:\personalproject\bachelor\logs\fragments\accidents\accident_20260327_170143_456706_frame353.jpg | Video=None
+2026-03-27 17:01:45,197 - INFO - [FRAME 354] CONFIRMED ACCIDENT | ID=1 | SCORE=0.73
+2026-03-27 17:01:45,197 - INFO - [FRAME 354] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.7253 | eff_score=0.8030 | lstm_risk=0.6547 | lstm_boost=0.0777 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.725 | Eff=0.803 | LSTM_Risk: 0.655 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:45,197 - INFO - [FRAME 354] CONFIRMED ACCIDENT | ID=2 | SCORE=0.83
+2026-03-27 17:01:45,197 - INFO - [FRAME 354] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8272 | eff_score=0.9159 | lstm_risk=0.6547 | lstm_boost=0.0886 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.827 | Eff=0.916 | LSTM_Risk: 0.655 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:46,851 - INFO - [FRAME 355] CONFIRMED ACCIDENT | ID=1 | SCORE=0.82
+2026-03-27 17:01:46,851 - INFO - [FRAME 355] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.8233 | eff_score=0.9092 | lstm_risk=0.6462 | lstm_boost=0.0860 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.823 | Eff=0.909 | LSTM_Risk: 0.646 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:46,851 - INFO - [FRAME 355] CONFIRMED ACCIDENT | ID=2 | SCORE=0.94
+2026-03-27 17:01:46,867 - INFO - [FRAME 355] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9417 | eff_score=1.0000 | lstm_risk=0.6462 | lstm_boost=0.0983 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.942 | Eff=1.000 | LSTM_Risk: 0.646 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:48,612 - INFO - [FRAME 356] CONFIRMED ACCIDENT | ID=1 | SCORE=0.72
+2026-03-27 17:01:48,612 - INFO - [FRAME 356] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.7221 | eff_score=0.7969 | lstm_risk=0.6437 | lstm_boost=0.0748 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.722 | Eff=0.797 | LSTM_Risk: 0.644 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:48,612 - INFO - [FRAME 356] CONFIRMED ACCIDENT | ID=2 | SCORE=0.91
+2026-03-27 17:01:48,627 - INFO - [FRAME 356] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9115 | eff_score=1.0000 | lstm_risk=0.6437 | lstm_boost=0.0944 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.912 | Eff=1.000 | LSTM_Risk: 0.644 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:50,316 - INFO - [FRAME 357] CONFIRMED ACCIDENT | ID=1 | SCORE=0.67
+2026-03-27 17:01:50,316 - INFO - [FRAME 357] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.6686 | eff_score=0.7372 | lstm_risk=0.6409 | lstm_boost=0.0686 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.669 | Eff=0.737 | LSTM_Risk: 0.641 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:50,316 - INFO - [FRAME 357] CONFIRMED ACCIDENT | ID=2 | SCORE=0.95
+2026-03-27 17:01:50,316 - INFO - [FRAME 357] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9525 | eff_score=1.0000 | lstm_risk=0.6409 | lstm_boost=0.0978 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.953 | Eff=1.000 | LSTM_Risk: 0.641 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:52,575 - INFO - [FRAME 358] CONFIRMED ACCIDENT | ID=1 | SCORE=0.63
+2026-03-27 17:01:52,575 - INFO - [FRAME 358] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.6344 | eff_score=0.6962 | lstm_risk=0.6241 | lstm_boost=0.0618 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.634 | Eff=0.696 | LSTM_Risk: 0.624 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:52,575 - INFO - [FRAME 358] CONFIRMED ACCIDENT | ID=2 | SCORE=0.91
+2026-03-27 17:01:52,575 - INFO - [FRAME 358] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9112 | eff_score=0.9999 | lstm_risk=0.6241 | lstm_boost=0.0887 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.911 | Eff=1.000 | LSTM_Risk: 0.624 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:54,401 - INFO - [FRAME 359] CONFIRMED ACCIDENT | ID=1 | SCORE=0.45
+2026-03-27 17:01:54,401 - INFO - [FRAME 359] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.4497 | eff_score=0.4902 | lstm_risk=0.6007 | lstm_boost=0.0406 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.450 | Eff=0.490 | LSTM_Risk: 0.601 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:54,426 - INFO - [FRAME 359] CONFIRMED ACCIDENT | ID=2 | SCORE=0.93
+2026-03-27 17:01:54,427 - INFO - [FRAME 359] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9280 | eff_score=1.0000 | lstm_risk=0.6007 | lstm_boost=0.0837 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.928 | Eff=1.000 | LSTM_Risk: 0.601 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:56,551 - INFO - [FRAME 360] CONFIRMED ACCIDENT | ID=1 | SCORE=0.20
+2026-03-27 17:01:56,551 - INFO - [FRAME 360] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2023 | eff_score=0.2195 | lstm_risk=0.5840 | lstm_boost=0.0172 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.202 | Eff=0.220 | LSTM_Risk: 0.584 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:56,566 - INFO - [FRAME 360] CONFIRMED ACCIDENT | ID=2 | SCORE=0.97
+2026-03-27 17:01:56,566 - INFO - [FRAME 360] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9655 | eff_score=1.0000 | lstm_risk=0.5840 | lstm_boost=0.0823 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.966 | Eff=1.000 | LSTM_Risk: 0.584 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:58,383 - INFO - [FRAME 361] CONFIRMED ACCIDENT | ID=1 | SCORE=0.40
+2026-03-27 17:01:58,383 - INFO - [FRAME 361] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.4021 | eff_score=0.4357 | lstm_risk=0.5773 | lstm_boost=0.0335 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.402 | Eff=0.436 | LSTM_Risk: 0.577 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:01:58,456 - INFO - [FRAME 361] CONFIRMED ACCIDENT | ID=2 | SCORE=0.91
+2026-03-27 17:01:58,456 - INFO - [FRAME 361] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9095 | eff_score=0.9853 | lstm_risk=0.5773 | lstm_boost=0.0758 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.909 | Eff=0.985 | LSTM_Risk: 0.577 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:02:00,322 - INFO - [FRAME 362] CONFIRMED ACCIDENT | ID=1 | SCORE=0.33
+2026-03-27 17:02:00,322 - INFO - [FRAME 362] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.3272 | eff_score=0.3533 | lstm_risk=0.5640 | lstm_boost=0.0260 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.327 | Eff=0.353 | LSTM_Risk: 0.564 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:02:00,322 - INFO - [FRAME 362] CONFIRMED ACCIDENT | ID=2 | SCORE=0.86
+2026-03-27 17:02:00,322 - INFO - [FRAME 362] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8640 | eff_score=0.9327 | lstm_risk=0.5640 | lstm_boost=0.0687 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.864 | Eff=0.933 | LSTM_Risk: 0.564 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:02:02,792 - INFO - [FRAME 363] CONFIRMED ACCIDENT | ID=1 | SCORE=0.32
+2026-03-27 17:02:02,792 - INFO - [FRAME 363] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.3189 | eff_score=0.3430 | lstm_risk=0.5505 | lstm_boost=0.0242 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.319 | Eff=0.343 | LSTM_Risk: 0.551 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:02:02,793 - INFO - [FRAME 363] CONFIRMED ACCIDENT | ID=2 | SCORE=0.90
+2026-03-27 17:02:02,793 - INFO - [FRAME 363] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8970 | eff_score=0.9649 | lstm_risk=0.5505 | lstm_boost=0.0680 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.897 | Eff=0.965 | LSTM_Risk: 0.551 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:02:04,902 - INFO - [FRAME 364] CONFIRMED ACCIDENT | ID=1 | SCORE=0.28
+2026-03-27 17:02:04,902 - INFO - [FRAME 364] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2827 | eff_score=0.2946 | lstm_risk=0.4101 | lstm_boost=0.0119 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.283 | Eff=0.295 | LSTM_Risk: 0.410 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:02:04,902 - INFO - [FRAME 364] CONFIRMED ACCIDENT | ID=2 | SCORE=0.86
+2026-03-27 17:02:04,902 - INFO - [FRAME 364] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8639 | eff_score=0.9003 | lstm_risk=0.4101 | lstm_boost=0.0363 | kinematic=True | lstm_flag=True | sudden_stop=FalseCNN=0.864 | Eff=0.900 | LSTM_Risk: 0.410 | Kinematic: YES | SuddenStop=False
+2026-03-27 17:02:06,655 - INFO - [FRAME 365] CONFIRMED ACCIDENT | ID=1 | SCORE=0.23
+2026-03-27 17:02:06,655 - INFO - [FRAME 365] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2299 | eff_score=0.2299 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.230 | Eff=0.230 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:06,655 - INFO - [FRAME 365] CONFIRMED ACCIDENT | ID=2 | SCORE=0.86
+2026-03-27 17:02:06,655 - INFO - [FRAME 365] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8572 | eff_score=0.8572 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.857 | Eff=0.857 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:08,935 - INFO - [FRAME 366] CONFIRMED ACCIDENT | ID=1 | SCORE=0.25
+2026-03-27 17:02:08,936 - INFO - [FRAME 366] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2544 | eff_score=0.2544 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.254 | Eff=0.254 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:08,936 - INFO - [FRAME 366] CONFIRMED ACCIDENT | ID=2 | SCORE=0.88
+2026-03-27 17:02:08,936 - INFO - [FRAME 366] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8810 | eff_score=0.8810 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.881 | Eff=0.881 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:10,831 - INFO - [FRAME 367] CONFIRMED ACCIDENT | ID=1 | SCORE=0.26
+2026-03-27 17:02:10,831 - INFO - [FRAME 367] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2637 | eff_score=0.2637 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.264 | Eff=0.264 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:10,831 - INFO - [FRAME 367] CONFIRMED ACCIDENT | ID=2 | SCORE=0.88
+2026-03-27 17:02:10,831 - INFO - [FRAME 367] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8814 | eff_score=0.8814 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.881 | Eff=0.881 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:12,591 - INFO - [FRAME 368] CONFIRMED ACCIDENT | ID=1 | SCORE=0.31
+2026-03-27 17:02:12,591 - INFO - [FRAME 368] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.3052 | eff_score=0.3052 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.305 | Eff=0.305 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:12,591 - INFO - [FRAME 368] CONFIRMED ACCIDENT | ID=2 | SCORE=0.89
+2026-03-27 17:02:12,591 - INFO - [FRAME 368] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8871 | eff_score=0.8871 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.887 | Eff=0.887 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:14,242 - INFO - [FRAME 369] CONFIRMED ACCIDENT | ID=1 | SCORE=0.22
+2026-03-27 17:02:14,242 - INFO - [FRAME 369] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2196 | eff_score=0.2196 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.220 | Eff=0.220 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:14,242 - INFO - [FRAME 369] CONFIRMED ACCIDENT | ID=2 | SCORE=0.88
+2026-03-27 17:02:14,242 - INFO - [FRAME 369] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8829 | eff_score=0.8829 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.883 | Eff=0.883 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:16,010 - INFO - [FRAME 370] CONFIRMED ACCIDENT | ID=1 | SCORE=0.23
+2026-03-27 17:02:16,010 - INFO - [FRAME 370] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2279 | eff_score=0.2279 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.228 | Eff=0.228 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:16,010 - INFO - [FRAME 370] CONFIRMED ACCIDENT | ID=2 | SCORE=0.84
+2026-03-27 17:02:16,010 - INFO - [FRAME 370] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8391 | eff_score=0.8391 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.839 | Eff=0.839 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:17,653 - INFO - [FRAME 371] CONFIRMED ACCIDENT | ID=1 | SCORE=0.42
+2026-03-27 17:02:17,653 - INFO - [FRAME 371] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.4189 | eff_score=0.4189 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.419 | Eff=0.419 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:17,653 - INFO - [FRAME 371] CONFIRMED ACCIDENT | ID=2 | SCORE=0.85
+2026-03-27 17:02:17,653 - INFO - [FRAME 371] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8519 | eff_score=0.8519 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.852 | Eff=0.852 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:19,682 - INFO - [FRAME 372] CONFIRMED ACCIDENT | ID=1 | SCORE=0.42
+2026-03-27 17:02:19,682 - INFO - [FRAME 372] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.4186 | eff_score=0.4186 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.419 | Eff=0.419 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:19,682 - INFO - [FRAME 372] CONFIRMED ACCIDENT | ID=2 | SCORE=0.90
+2026-03-27 17:02:19,682 - INFO - [FRAME 372] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.8987 | eff_score=0.8987 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.899 | Eff=0.899 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:21,351 - INFO - [FRAME 373] CONFIRMED ACCIDENT | ID=1 | SCORE=0.28
+2026-03-27 17:02:21,351 - INFO - [FRAME 373] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2791 | eff_score=0.2791 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.279 | Eff=0.279 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:21,445 - INFO - [FRAME 373] CONFIRMED ACCIDENT | ID=2 | SCORE=0.91
+2026-03-27 17:02:21,445 - INFO - [FRAME 373] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9147 | eff_score=0.9147 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.915 | Eff=0.915 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:23,400 - INFO - [FRAME 374] CONFIRMED ACCIDENT | ID=1 | SCORE=0.35
+2026-03-27 17:02:23,401 - INFO - [FRAME 374] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.3487 | eff_score=0.3487 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.349 | Eff=0.349 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:23,489 - INFO - [FRAME 374] CONFIRMED ACCIDENT | ID=2 | SCORE=0.92
+2026-03-27 17:02:23,489 - INFO - [FRAME 374] ✅ CONFIRMED ACCIDENT | ID=2 | cnn_score=0.9150 | eff_score=0.9150 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.915 | Eff=0.915 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:25,173 - INFO - [FRAME 375] CONFIRMED ACCIDENT | ID=1 | SCORE=0.37
+2026-03-27 17:02:25,173 - INFO - [FRAME 375] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.3715 | eff_score=0.3715 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.371 | Eff=0.371 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:26,654 - INFO - [FRAME 376] CONFIRMED ACCIDENT | ID=1 | SCORE=0.39
+2026-03-27 17:02:26,654 - INFO - [FRAME 376] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.3867 | eff_score=0.3867 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.387 | Eff=0.387 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:28,092 - INFO - [FRAME 377] CONFIRMED ACCIDENT | ID=1 | SCORE=0.41
+2026-03-27 17:02:28,093 - INFO - [FRAME 377] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.4078 | eff_score=0.4078 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.408 | Eff=0.408 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:29,672 - INFO - [FRAME 378] CONFIRMED ACCIDENT | ID=1 | SCORE=0.38
+2026-03-27 17:02:29,672 - INFO - [FRAME 378] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.3836 | eff_score=0.3836 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.384 | Eff=0.384 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:31,266 - INFO - [FRAME 379] CONFIRMED ACCIDENT | ID=1 | SCORE=0.44
+2026-03-27 17:02:31,266 - INFO - [FRAME 379] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.4381 | eff_score=0.4381 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.438 | Eff=0.438 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:32,818 - INFO - [FRAME 380] CONFIRMED ACCIDENT | ID=1 | SCORE=0.38
+2026-03-27 17:02:32,818 - INFO - [FRAME 380] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.3819 | eff_score=0.3819 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.382 | Eff=0.382 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:34,381 - INFO - [FRAME 381] CONFIRMED ACCIDENT | ID=1 | SCORE=0.47
+2026-03-27 17:02:34,381 - INFO - [FRAME 381] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.4712 | eff_score=0.4712 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.471 | Eff=0.471 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:35,847 - INFO - [FRAME 382] CONFIRMED ACCIDENT | ID=1 | SCORE=0.46
+2026-03-27 17:02:35,847 - INFO - [FRAME 382] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.4562 | eff_score=0.4562 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.456 | Eff=0.456 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:37,520 - INFO - [FRAME 383] CONFIRMED ACCIDENT | ID=1 | SCORE=0.43
+2026-03-27 17:02:37,520 - INFO - [FRAME 383] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.4305 | eff_score=0.4305 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.430 | Eff=0.430 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:39,046 - INFO - [FRAME 384] CONFIRMED ACCIDENT | ID=1 | SCORE=0.41
+2026-03-27 17:02:39,046 - INFO - [FRAME 384] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.4106 | eff_score=0.4106 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.411 | Eff=0.411 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:39,077 - CRITICAL - [ACCIDENT SAVED] Frame 384 | Vehicles: 1 | Severity: 🟡MEDIUM | Photo: E:\personalproject\bachelor\logs\fragments\accidents\accident_20260327_170239_061730_frame384.jpg | Video: None
+2026-03-27 17:02:39,077 - CRITICAL - [ACCIDENT SAVED] Frame=384 | Vehicles=1 (primary=1 secondary=0) | Severity=🟡MEDIUM | max_conf=0.4110 | avg_conf=0.4110 | timestamp=00:12 | Photo=E:\personalproject\bachelor\logs\fragments\accidents\accident_20260327_170239_061730_frame384.jpg | Video=None
+2026-03-27 17:02:40,505 - INFO - [FRAME 385] CONFIRMED ACCIDENT | ID=1 | SCORE=0.49
+2026-03-27 17:02:40,505 - INFO - [FRAME 385] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.4874 | eff_score=0.4874 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.487 | Eff=0.487 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:41,995 - INFO - [FRAME 386] CONFIRMED ACCIDENT | ID=1 | SCORE=0.39
+2026-03-27 17:02:41,995 - INFO - [FRAME 386] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.3927 | eff_score=0.3927 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.393 | Eff=0.393 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:43,599 - INFO - [FRAME 387] CONFIRMED ACCIDENT | ID=1 | SCORE=0.52
+2026-03-27 17:02:43,599 - INFO - [FRAME 387] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.5198 | eff_score=0.5198 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.520 | Eff=0.520 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:45,239 - INFO - [FRAME 388] CONFIRMED ACCIDENT | ID=1 | SCORE=0.50
+2026-03-27 17:02:45,239 - INFO - [FRAME 388] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.5038 | eff_score=0.5038 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.504 | Eff=0.504 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:46,841 - INFO - [FRAME 389] CONFIRMED ACCIDENT | ID=1 | SCORE=0.45
+2026-03-27 17:02:46,841 - INFO - [FRAME 389] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.4537 | eff_score=0.4537 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.454 | Eff=0.454 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:48,610 - INFO - [FRAME 390] CONFIRMED ACCIDENT | ID=1 | SCORE=0.47
+2026-03-27 17:02:48,610 - INFO - [FRAME 390] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.4724 | eff_score=0.4724 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.472 | Eff=0.472 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:50,130 - INFO - [FRAME 391] CONFIRMED ACCIDENT | ID=1 | SCORE=0.44
+2026-03-27 17:02:50,130 - INFO - [FRAME 391] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.4425 | eff_score=0.4425 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.443 | Eff=0.443 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:51,599 - INFO - [FRAME 392] CONFIRMED ACCIDENT | ID=1 | SCORE=0.28
+2026-03-27 17:02:51,599 - INFO - [FRAME 392] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2836 | eff_score=0.2836 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.284 | Eff=0.284 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:53,102 - INFO - [FRAME 393] CONFIRMED ACCIDENT | ID=1 | SCORE=0.33
+2026-03-27 17:02:53,102 - INFO - [FRAME 393] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.3291 | eff_score=0.3291 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.329 | Eff=0.329 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:54,638 - INFO - [FRAME 394] CONFIRMED ACCIDENT | ID=1 | SCORE=0.41
+2026-03-27 17:02:54,638 - INFO - [FRAME 394] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.4108 | eff_score=0.4108 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.411 | Eff=0.411 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:56,199 - INFO - [FRAME 395] CONFIRMED ACCIDENT | ID=1 | SCORE=0.34
+2026-03-27 17:02:56,199 - INFO - [FRAME 395] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.3392 | eff_score=0.3392 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.339 | Eff=0.339 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:57,743 - INFO - [FRAME 396] CONFIRMED ACCIDENT | ID=1 | SCORE=0.28
+2026-03-27 17:02:57,743 - INFO - [FRAME 396] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2801 | eff_score=0.2801 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.280 | Eff=0.280 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:02:59,206 - INFO - [FRAME 397] CONFIRMED ACCIDENT | ID=1 | SCORE=0.24
+2026-03-27 17:02:59,206 - INFO - [FRAME 397] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2411 | eff_score=0.2411 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.241 | Eff=0.241 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:03:00,696 - INFO - [FRAME 398] CONFIRMED ACCIDENT | ID=1 | SCORE=0.21
+2026-03-27 17:03:00,696 - INFO - [FRAME 398] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2066 | eff_score=0.2066 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.207 | Eff=0.207 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:03:02,264 - INFO - [FRAME 399] CONFIRMED ACCIDENT | ID=1 | SCORE=0.25
+2026-03-27 17:03:02,264 - INFO - [FRAME 399] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2499 | eff_score=0.2499 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.250 | Eff=0.250 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:03:03,705 - INFO - [FRAME 400] CONFIRMED ACCIDENT | ID=1 | SCORE=0.27
+2026-03-27 17:03:03,705 - INFO - [FRAME 400] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2706 | eff_score=0.2706 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.271 | Eff=0.271 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:03:05,146 - INFO - [FRAME 401] CONFIRMED ACCIDENT | ID=1 | SCORE=0.27
+2026-03-27 17:03:05,146 - INFO - [FRAME 401] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2687 | eff_score=0.2687 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.269 | Eff=0.269 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:03:06,644 - INFO - [FRAME 402] CONFIRMED ACCIDENT | ID=1 | SCORE=0.27
+2026-03-27 17:03:06,644 - INFO - [FRAME 402] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2663 | eff_score=0.2663 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.266 | Eff=0.266 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:03:08,252 - INFO - [FRAME 403] CONFIRMED ACCIDENT | ID=1 | SCORE=0.26
+2026-03-27 17:03:08,252 - INFO - [FRAME 403] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2555 | eff_score=0.2555 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.256 | Eff=0.256 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:03:09,677 - INFO - [FRAME 404] CONFIRMED ACCIDENT | ID=1 | SCORE=0.29
+2026-03-27 17:03:09,677 - INFO - [FRAME 404] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2862 | eff_score=0.2862 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.286 | Eff=0.286 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:03:11,374 - INFO - [FRAME 405] CONFIRMED ACCIDENT | ID=1 | SCORE=0.22
+2026-03-27 17:03:11,375 - INFO - [FRAME 405] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2241 | eff_score=0.2241 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.224 | Eff=0.224 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:03:12,988 - INFO - [FRAME 406] CONFIRMED ACCIDENT | ID=1 | SCORE=0.27
+2026-03-27 17:03:12,988 - INFO - [FRAME 406] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.2655 | eff_score=0.2655 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.266 | Eff=0.266 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:03:14,521 - INFO - [FRAME 407] CONFIRMED ACCIDENT | ID=1 | SCORE=0.31
+2026-03-27 17:03:14,521 - INFO - [FRAME 407] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.3064 | eff_score=0.3064 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.306 | Eff=0.306 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:03:16,110 - INFO - [FRAME 408] CONFIRMED ACCIDENT | ID=1 | SCORE=0.37
+2026-03-27 17:03:16,125 - INFO - [FRAME 408] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.3730 | eff_score=0.3730 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.373 | Eff=0.373 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:03:17,721 - INFO - [FRAME 409] CONFIRMED ACCIDENT | ID=1 | SCORE=0.41
+2026-03-27 17:03:17,721 - INFO - [FRAME 409] ✅ CONFIRMED ACCIDENT | ID=1 | cnn_score=0.4120 | eff_score=0.4120 | lstm_risk=0.0000 | lstm_boost=0.0000 | kinematic=False | lstm_flag=False | sudden_stop=FalseCNN=0.412 | Eff=0.412 | LSTM_Risk: 0.000 | Kinematic: NO | SuddenStop=False
+2026-03-27 17:03:20,164 - CRITICAL - [VideoBuffer] Кліп збережено: E:\personalproject\bachelor\logs\fragments\clip\accident_clip_0001_f291.mp4 (238 кадрів)
+2026-03-27 17:04:13,695 - INFO - [TELEGRAM BOT] Очікуємо відправку 2 сповіщень (max 180с)...
+2026-03-27 17:04:13,695 - INFO - [TELEGRAM BOT] Всі сповіщення відправлено.
+2026-03-27 17:04:13,765 - INFO - [EVAL] Зібрані дані збережено у: E:\personalproject\bachelor\logs\evaluation\accident_video_v7
+2026-03-27 17:04:19,415 - INFO - Processing finished. Output: E:\personalproject\bachelor\logs\fragments\accident_video_v7.mp4

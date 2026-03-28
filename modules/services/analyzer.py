@@ -113,6 +113,14 @@ class TrafficAnalyzer:
         # Оновлюється кожен кадр через update_predicted_positions()
         self._lstm_predicted: Dict[int, np.ndarray] = {}
 
+        # ── Стаціонарні авта: лічильник кадрів з малою швидкістю ────────────
+        # Дозволяє розрізняти:
+        #   • Запарковане/стаціонарне авто (стоїть довго → завжди slow_frames = великий)
+        #   • Авто на світлофорі (поступово загальмувало → prev_speed < min_speed_for_stop)
+        #   • Аварійна зупинка (різка, після руху → speed_drop > threshold)
+        self._slow_frames: Dict[int, int] = {}   # {tid: кадри поспіль зі швидкістю < 2 px/f}
+        self.standing_threshold_frames: int = 60  # ~2 с при 30 fps → "стаціонарне авто"
+
         # ── Метрики ──────────────────────────────────────────────────────────
         self.metrics = {
             'total_frames_processed':    0,
@@ -234,30 +242,6 @@ class TrafficAnalyzer:
         boxes: List[Tuple] = None,
         ids:   List[int]   = None,
     ) -> Set[int]:
-        """
-        Передбачає можливі зіткнення з просунутими фільтрами для щільного трафіку.
-
-        Конвеєр фільтрів для кожної пари (A, B)
-        ----------------------------------------
-        1. Cooldown — пропуск пари що нещодавно вже спрацювала.
-        2. MinHistory — потрібна мінімальна довжина трекової історії.
-        3. MinRelativeSpeed — якщо |vel_A - vel_B| < мінімум → пропускаємо.
-           Захист від нестабільних TTC у заторі.
-        4. DirectionSimilarity — якщо cos(vel_A, vel_B) > поріг → попутні авто.
-           Вони не зіткнуться навіть якщо близько.
-        5. CosineConvergence — якщо cos_conv < поріг → пара розбіжна або паралельна.
-           Наприклад авто поруч що їдуть в одному напрямку.
-        6. AdaptiveTTC — обчислюємо TTC і порівнюємо з адаптивним порогом.
-           Поріг знижується при щільному трафіку (менше хибних спрацьовувань).
-        7. EMA-TTC — згладжуємо TTC через EMA щоб прибрати джиттер.
-        8. CompositeRiskScore — остаточна перевірка за composite score.
-           М'яке рішення: не лише TTC але й відстань і convergence разом.
-
-        Returns
-        -------
-        Set[int]
-            Множина track_id що знаходяться в зоні ризику.
-        """
         risky: Set[int] = set()
         current_frame = self.metrics['total_frames_processed']
 
@@ -266,59 +250,56 @@ class TrafficAnalyzer:
         if boxes is None or len(boxes) != len(ids):
             return risky
 
-        # Будуємо позиційний індекс для швидкого підрахунку щільності
-        centers = {
-            ids[i]: np.array([
-                (boxes[i][0] + boxes[i][2]) / 2,
-                (boxes[i][1] + boxes[i][3]) / 2
-            ])
-            for i in range(len(ids))
-        }
+        # ── 1. Кешування: O(N) перед вкладеними циклами ──────────────────────────
+        # Створюємо словники центрів, швидкостей та щільності один раз для всіх авто
+        centers = {}
+        for i, tid in enumerate(ids):
+            box = boxes[i]
+            centers[tid] = np.array([(box[0] + box[2]) / 2, (box[1] + box[3]) / 2])
 
+        velocities = {tid: self._get_velocity_vector(tid) for tid in ids}
+        densities = {tid: self._compute_local_density(tid, centers) for tid in ids}
+
+        # ── 2. Оцінка ризику: O(N²) з легкими перевірками ────────────────────────
         for i in range(len(ids)):
             for j in range(i + 1, len(ids)):
                 id_a, id_b = ids[i], ids[j]
                 pair_key = tuple(sorted([id_a, id_b]))
 
-                # ── 1. Cooldown ───────────────────────────────────────────────
+                # Cooldown
                 if pair_key in self.collision_pairs_history:
                     if current_frame - self.collision_pairs_history[pair_key] < self.collision_cooldown:
                         continue
 
-                # ── 2. Мінімальна довжина історії ────────────────────────────
-                if (len(self.track_history.get(id_a, [])) < 5 or
-                        len(self.track_history.get(id_b, [])) < 5):
+                # Обидва стаціонарні
+                if self._is_parked_or_standing(id_a) and self._is_parked_or_standing(id_b):
                     continue
 
-                pos_a = centers[id_a]
-                pos_b = centers[id_b]
-                vel_a = self._get_velocity_vector(id_a)
-                vel_b = self._get_velocity_vector(id_b)
+                # Мінімальна історія
+                if len(self.track_history.get(id_a, [])) < 5 or len(self.track_history.get(id_b, [])) < 5:
+                    continue
+
+                # Беремо закешовані значення (уникаємо перерахунку O(N^3))
+                pos_a, pos_b = centers[id_a], centers[id_b]
+                vel_a, vel_b = velocities[id_a], velocities[id_b]
 
                 distance = float(np.linalg.norm(pos_a - pos_b))
 
-                # ── 3. MinRelativeSpeed ───────────────────────────────────────
+                # MinRelativeSpeed
                 if self._relative_speed_too_low(vel_a, vel_b):
                     self.metrics['filtered_by_rel_speed'] += 1
                     continue
 
-                # ── 4. DirectionSimilarity (паралельно-смуговий фільтр) ───────
+                # DirectionSimilarity
                 if self._are_parallel_trajectories(vel_a, vel_b):
                     self.metrics['filtered_by_direction'] += 1
                     continue
 
-                # ── Перевірка відстані (попередня) ───────────────────────────
+                # Попередня перевірка відстані
                 if distance >= self.collision_distance * 2.5:
-                    # Занадто далеко — не рахуємо важкі метрики
                     continue
 
-                # ── 5 + 6. CosineConvergence + AdaptiveTTC ───────────────────
-                # calculate_ttc_advanced (utils.py) одночасно:
-                #   • обчислює TTC безпечно (без ділення на нуль)
-                #   • повертає approach_cos — косинус зближення [-1,1]
-                #     approach_cos > 0  → зближуються
-                #     approach_cos ≤ 0  → розбігаються / паралельний рух
-                # Це замінює окремий _cosine_convergence + ручний TTC-блок.
+                # CosineConvergence + AdaptiveTTC
                 raw_ttc, cos_conv = calculate_ttc_advanced(
                     pos_a, vel_a, pos_b, vel_b,
                     min_relative_speed=self.min_relative_speed,
@@ -329,49 +310,30 @@ class TrafficAnalyzer:
                     self.metrics['filtered_by_cos_conv'] += 1
                     continue
 
-                rel_pos = pos_b - pos_a
-
-                # Адаптивний поріг з урахуванням локальної щільності
-                local_density = self._compute_local_density(id_a, centers)
-                adaptive_thresh = self._adaptive_ttc_threshold(local_density)
-
-                # ── 7. EMA-TTC ────────────────────────────────────────────────
+                # Використовуємо закешовану щільність
+                adaptive_thresh = self._adaptive_ttc_threshold(densities[id_a])
                 smoothed_ttc = self._get_smoothed_ttc(pair_key, raw_ttc)
 
-                # ── 8. CompositeRiskScore ─────────────────────────────────────
-                ttc_ok   = smoothed_ttc < adaptive_thresh or distance < self.collision_distance
-                dist_ok  = distance < self.collision_distance * 1.8
-                cos_ok   = cos_conv >= self.min_cosine_convergence
+                # CompositeRiskScore
+                ttc_ok  = smoothed_ttc < adaptive_thresh or distance < self.collision_distance
+                dist_ok = distance < self.collision_distance * 1.8
 
                 if not (ttc_ok or dist_ok):
                     continue
 
-                composite = self._composite_risk_score(
-                    smoothed_ttc, adaptive_thresh,
-                    cos_conv,
-                    distance,
-                )
+                composite = self._composite_risk_score(smoothed_ttc, adaptive_thresh, cos_conv, distance)
 
                 if composite < self.composite_risk_min:
                     self.metrics['filtered_by_composite'] += 1
                     continue
 
-                # ── Пара пройшла всі фільтри — ризик підтверджено ────────────
+                # Ризик підтверджено
                 risky.add(id_a)
                 risky.add(id_b)
                 self.collision_pairs_history[pair_key] = current_frame
                 self.metrics['collision_warnings'] += 1
 
-                # cosine_approach_angle (utils.py) -- кут зближення у градусах.
-                # 0 = лоб-в-лоб, 90 = косий удар. Тільки для логування / налагодження.
-                _angle = cosine_approach_angle(vel_a, vel_b, pos_a, pos_b)
-
-        # ── LSTM як додатковий КІНЕМАТИЧНИЙ фільтр ──────────────────────────────
-        # _predict_collision_lstm перевіряє передбачені LSTM траєкторії.
-        # ПРИНЦИП: LSTM може лише ПІДТВЕРДИТИ пари які вже зблизились фізично
-        # (min_dist < collision_distance * 1.2 в predicted positions).
-        # LSTM НЕ може самостійно додавати треки без будь-якої кінематики —
-        # existing_risky передається щоб він міг розширити лише суміжні ризики.
+        # ── 3. LSTM кінематичний фільтр ──────────────────────────────────────────
         if self._lstm_predicted:
             lstm_extra = self._predict_collision_lstm(ids, boxes, centers, risky)
             risky = risky | lstm_extra
@@ -379,53 +341,63 @@ class TrafficAnalyzer:
         return risky
 
     def detect_sudden_stop(self, tid: int, boxes: List[Tuple], ids: List[int]) -> bool:
-        """
-        Детектує раптову зупинку що може вказувати на ДТП.
-
-        КРИТИЧНА ЛОГІКА: Перевіряємо чи це ДТП, а не затор.
-
-        Кроки перевірки
-        ---------------
-        1. Чи була достатня швидкість до зупинки.
-        2. Чи різкість падіння швидкості перевищує поріг.
-        3. Чи є інше авто дуже близько (фізичний контакт).
-        4. Чи навколо НЕ затор (щоб уникнути хибних спрацьовувань).
-        """
         if tid not in self.velocity_history or len(self.velocity_history[tid]) < 5:
             return False
 
-        velocities  = list(self.velocity_history[tid])
-        prev_speed  = np.mean(velocities[-5:-1]) if len(velocities) >= 5 else 0
-        curr_speed  = velocities[-1]
+        velocities = list(self.velocity_history[tid])
+        prev_speed = np.mean(velocities[-5:-1]) if len(velocities) >= 5 else 0.0
+        curr_speed = velocities[-1]
 
+        # 1. Авто мало достатню швидкість
         if prev_speed < self.min_speed_for_stop:
             return False
 
+        # 2. Різкість падіння швидкості
         speed_drop = (prev_speed - curr_speed) / (prev_speed + 1e-6)
         if speed_drop < self.sudden_stop_threshold:
             return False
 
-        tid_idx = ids.index(tid) if tid in ids else -1
-        if tid_idx == -1:
+        # Знаходимо індекс лише один раз (уникаємо багаторазового O(N))
+        try:
+            tid_idx = ids.index(tid)
+        except ValueError:
             return False
 
+        # Кешуємо центр цільового авто
         tid_box = boxes[tid_idx]
-        has_close_contact = False
+        tid_center = np.array([(tid_box[0] + tid_box[2]) / 2, (tid_box[1] + tid_box[3]) / 2])
+
+        # 3 & 4. Об'єднана логіка: шукаємо сусідів та перевіряємо затор за один прохід
+        JAM_RADIUS = 200
+        CONTACT_RADIUS = 100
+        stopped_nearby = 0
+        has_nearby_vehicle = False
 
         for i, other_id in enumerate(ids):
             if other_id == tid:
                 continue
+                
             other_box = boxes[i]
-            if self._calculate_box_distance(tid_box, other_box) < 50:
-                if self.object_states.get(other_id, {}).get('avg_speed', 100) < 2.0:
-                    has_close_contact = True
-                    break
+            other_center = np.array([(other_box[0] + other_box[2]) / 2, (other_box[1] + other_box[3]) / 2])
+            dist = float(np.linalg.norm(tid_center - other_center))
 
-        if self._is_traffic_jam(tid, boxes, ids):
+            if dist < CONTACT_RADIUS:
+                has_nearby_vehicle = True
+
+            if dist < JAM_RADIUS and self.object_states.get(other_id, {}).get('stopped', False):
+                stopped_nearby += 1
+
+        # Перевірка на затор (замінює виклик _is_traffic_jam)
+        if stopped_nearby >= 3: 
             self.metrics['false_positive_stops'] += 1
             return False
 
-        if has_close_contact:
+        if has_nearby_vehicle:
+            self.metrics['sudden_stops_detected'] += 1
+            return True
+
+        # 5. Надзвичайно різка зупинка без сусіда
+        if speed_drop > 0.6:
             self.metrics['sudden_stops_detected'] += 1
             return True
 
@@ -442,6 +414,7 @@ class TrafficAnalyzer:
             self.velocity_history.pop(tid, None)
             self.object_states.pop(tid, None)
             self.active_ids.discard(tid)
+            self._slow_frames.pop(tid, None)   # очищаємо лічильник стаціонарності
 
         # Очистка EMA-кешу для зниклих треків
         dead_pairs = [
@@ -500,6 +473,7 @@ class TrafficAnalyzer:
         }
         self.collision_pairs_history.clear()
         self._ttc_ema.clear()
+        self._slow_frames.clear()
 
     # ═══════════════════════════════════════════════════════════════════════════
     # ADVANCED FILTERS — PRIVATE METHODS
@@ -509,6 +483,21 @@ class TrafficAnalyzer:
     # тепер cosine convergence (approach_cos) повертає calculate_ttc_advanced()
     # з utils.py разом з TTC за один виклик -- без дублювання логіки.
 
+
+    def _is_parked_or_standing(self, tid: int) -> bool:
+        """
+        True якщо авто стоїть без руху більш ніж standing_threshold_frames кадрів.
+
+        Відрізняє три стани:
+          • Запарковане авто     → стоїть сотні кадрів → True
+          • Авто на світлофорі   → стоїть 30-90 кадрів → True (поки чекає)
+          • Щойно зупинилось     → slow_frames = 0-5   → False (свіжа зупинка)
+
+        Використання: виключати пари де ОБИДВА стаціонарні з predict_collision —
+        вони не можуть самостійно зіткнутись без зовнішньої причини.
+        Якщо одне авто рухається → пара залишається в аналізі.
+        """
+        return self._slow_frames.get(tid, 0) >= self.standing_threshold_frames
 
     def _direction_similarity(
         self,
@@ -735,11 +724,20 @@ class TrafficAnalyzer:
         acceleration  = velocities[-1] - velocities[-2] if len(velocities) >= 2 else 0.0
         is_stopped    = current_speed < 1.0 and avg_speed < 2.0
 
+        # ── Лічильник стаціонарності ─────────────────────────────────────────
+        # Збільшуємо якщо авто майже не рухається, скидаємо при русі.
+        # Використовується для розрізнення «стоїть давно» vs «щойно зупинилось».
+        if current_speed < 2.0:
+            self._slow_frames[tid] = self._slow_frames.get(tid, 0) + 1
+        else:
+            self._slow_frames[tid] = 0
+
         self.object_states[tid] = {
-            'speed':        current_speed,
-            'avg_speed':    avg_speed,
-            'acceleration': acceleration,
-            'stopped':      is_stopped,
+            'speed':           current_speed,
+            'avg_speed':       avg_speed,
+            'acceleration':    acceleration,
+            'stopped':         is_stopped,
+            'standing_frames': self._slow_frames.get(tid, 0),
         }
 
     def _get_velocity_vector(self, tid: int, smooth_window: int = 3) -> np.ndarray:
@@ -792,24 +790,3 @@ class TrafficAnalyzer:
                 stopped_nearby += 1
 
         return stopped_nearby >= stopped_threshold
-
-    # ═══════════════════════════════════════════════════════════════════════════
-    # GEOMETRY UTILS
-    # ═══════════════════════════════════════════════════════════════════════════
-
-    def point_to_line_distance(self, px, py, x1, y1, x2, y2) -> float:
-        """Відстань від точки до відрізка."""
-        A, B, C, D = px - x1, py - y1, x2 - x1, y2 - y1
-        len_sq = C * C + D * D
-        if len_sq == 0:
-            return float(np.hypot(px - x1, py - y1))
-        param = (A * C + B * D) / len_sq
-        param = max(0.0, min(1.0, param))
-        return float(np.hypot(px - (x1 + param * C), py - (y1 + param * D)))
-
-    def is_moving_towards_camera(self, tid: int) -> bool:
-        """Перевіряє чи об'єкт рухається до камери (Y збільшується)."""
-        pts = self.track_history.get(tid, [])
-        if len(pts) < self.min_motion:
-            return False
-        return (pts[-1][1] - pts[0][1]) > 10

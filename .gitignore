@@ -25,3 +25,5 @@ model/weights/
 *.jpeg
 *.json
 *.csv
+roi-for-video.txt
+logs/
