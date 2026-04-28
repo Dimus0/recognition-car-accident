@@ -1,9 +1,18 @@
 import os
 import torch
-import shutil
 
 class Config:
     """Глобальні налаштування проекту"""
+
+    ABLATION_MODE: str = "baseline"
+
+    ABLATION_CONFIGS: dict = {
+        'baseline':  'YOLOv8 + DeepSORT + Distance trigger (80 px) — no TTC / LSTM',
+        'kinematic': 'YOLOv8 + DeepSORT + TTC + Cosine Similarity — no LSTM',
+        'lstm_only': 'YOLOv8 + DeepSORT + MotionLSTM predictor — no TTC kinematic',
+        'full':      'YOLOv8 + DeepSORT + LSTM + TTC + ResNet50 cascade (default)',
+    }
+
 
     # ------------------ 1. BASE PATHS ------------------
     BASE_DIR = r"E:\personalproject\bachelor"
@@ -16,20 +25,20 @@ class Config:
     # GROUND_TRUTH_PATH         = r"E:\personalproject\bachelor\logs\gt\gt_accident_video_v1.json"
     # GROUND_TRUTH_PATH         = r"E:\personalproject\bachelor\logs\gt\gt_accident_video_v3.json"
     # GROUND_TRUTH_PATH         = r"E:\personalproject\bachelor\logs\gt\gt_accident_video_v6.json"
-    GROUND_TRUTH_PATH         = r"E:\personalproject\bachelor\logs\gt\gt_accident_video_v7.json"
+    # GROUND_TRUTH_PATH         = r"E:\personalproject\bachelor\logs\gt\gt_accident_video_v7.json"
     # GROUND_TRUTH_PATH         = r"E:\personalproject\bachelor\logs\gt\gt_accident_video_v8.json" # test
     # GROUND_TRUTH_PATH         = r"E:\personalproject\bachelor\logs\gt\gt_accident_video_v10.json"
-    # GROUND_TRUTH_PATH         = r"E:\personalproject\bachelor\logs\gt\gt_noaccident_video_v1.json"
+    GROUND_TRUTH_PATH         = r"E:\personalproject\bachelor\logs\gt\gt_noaccident_video_v1.json"
     # GROUND_TRUTH_PATH         = r"E:\personalproject\bachelor\logs\gt\gt_noaccident_video_v2.json"
     # GROUND_TRUTH_PATH         = r"E:\personalproject\bachelor\logs\gt\gt_noaccident_video_v3.json"
 
     # VIDEO_PATH                = r"E:\personalproject\bachelor\data\video\accident_video_v1.mp4"
     # VIDEO_PATH                = r"E:\personalproject\bachelor\data\video\accident_video_v3.mp4"
     # VIDEO_PATH                = r"E:\personalproject\bachelor\data\video\accident_video_v6.mp4"
-    VIDEO_PATH                = r"E:\personalproject\bachelor\data\video\accident_video_v7.mp4"
+    # VIDEO_PATH                = r"E:\personalproject\bachelor\data\video\accident_video_v7.mp4"
     # VIDEO_PATH                = r"E:\personalproject\bachelor\data\video\accident_video_v8.mp4" # test
     # VIDEO_PATH                = r"E:\personalproject\bachelor\data\video\accident_video_v10.mp4"
-    # VIDEO_PATH                = r"E:\personalproject\bachelor\data\video\noaccident_video_v1.mp4"
+    VIDEO_PATH                = r"E:\personalproject\bachelor\data\video\noaccident_video_v1.mp4"
     # VIDEO_PATH                = r"E:\personalproject\bachelor\data\video\noaccident_video_v2.mp4"
     # VIDEO_PATH                = r"E:\personalproject\bachelor\data\video\noaccident_video_v3.mp4"
 
@@ -43,9 +52,9 @@ class Config:
     # ------------------ 3. DETECTION & CNN ------------------
     CONF_YOLO               = 0.55
     IOU_YOLO                = 0.50
-    CONF_ACCIDENT_HIGH      = 0.90   # Поріг точного ДТП
-    CONF_ACCIDENT_LOW       = 0.85    # Поріг попередження
-    HEARTBEAT_RATE          = 15         # Як часто перевіряти авто без підозр # було 10
+    CONF_ACCIDENT_HIGH      = 0.30   # Поріг точного ДТП
+    CONF_ACCIDENT_LOW       = 0.60    # Поріг попередження
+    HEARTBEAT_RATE          = 10         # Як часто перевіряти авто без підозр # було 10
     VIDEO_BUFFER_SECONDS    = 4.0  # Буфер до/після аварії               # було 2
 
     # ------------------ 4. MOTION LSTM ------------------

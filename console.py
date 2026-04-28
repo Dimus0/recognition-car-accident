@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-import torch
 from torchvision import transforms
 import logging
 import os
@@ -22,7 +21,6 @@ from modules.services import (
 from modules.metrics import MetricsTracker
 from modules.config.config import Config
 from modules.notification.bot import schedule_notification,wait_for_notifications
-from typing import Dict, Set
 # Update
 from modules.services.eval_collector import EvalDataCollector
 
@@ -90,6 +88,7 @@ logger.info(
 motion_lstm = load_motion_lstm(Config.LSTM_MODEL_PATH, Config.LSTM_SCALER_PATH, Config.DEVICE)
 logger.info(f"Models loaded successfully. MotionLSTM: {'ON' if motion_lstm else 'OFF'}")
 
+
 transform = transforms.Compose([
     transforms.ToPILImage(),
     transforms.Resize((224, 224)),
@@ -97,6 +96,27 @@ transform = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
+def _distance_based_trigger(boxes: list, ids: list, threshold: float = 80.0) -> set:
+    """
+    Baseline mode trigger: mark pairs of vehicles whose bounding-box centres
+    are closer than *threshold* pixels as risky — no kinematic model involved.
+    O(N²) but N is small (≤ 30 vehicles per ROI in practice).
+    """
+    risky: set = set()
+    n = len(ids)
+    if n < 2:
+        return risky
+    cx = [(b[0] + b[2]) * 0.5 for b in boxes]
+    cy = [(b[1] + b[3]) * 0.5 for b in boxes]
+    thr2 = threshold * threshold
+    for i in range(n):
+        for j in range(i + 1, n):
+            dx = cx[i] - cx[j]
+            dy = cy[i] - cy[j]
+            if dx * dx + dy * dy < thr2:
+                risky.add(ids[i])
+                risky.add(ids[j])
+    return risky
 
 """
     ============================= MAIN PIPELINE =============================
@@ -147,6 +167,15 @@ def accident_detection(input_video):
 
     frame_count = 0
     cnn_results_cache = {}
+
+    ablation = Config.ABLATION_MODE
+    effective_lstm = motion_lstm if ablation in ('lstm_only', 'full') else None
+    logger.info(
+        "[ABLATION] mode=%r | LSTM=%s | Kinematic=%s | CNN=ON",
+        ablation,
+        'ON' if effective_lstm else 'OFF',
+        'OFF' if ablation == 'lstm_only' else 'ON',
+    )
 
     notified_accidents: set = set()
     notification_threads: list = []
@@ -266,6 +295,17 @@ def accident_detection(input_video):
         analyzer.clean_old_tracks(ids)
         metrics_tracker.update_tracking_metrics(ids, analyzer.track_history)
         metrics_tracker.record_tracks(frame_count, boxes, ids)
+
+        if ablation == 'baseline':
+            collision_risky_ids_kin = _distance_based_trigger(
+                boxes, ids, threshold=Config.ANALYZER_COLLISION_DIST
+            )
+        elif ablation == 'lstm_only':
+            collision_risky_ids_kin = set()   # LSTM бере на себе всю відповідальність
+        else:  # 'kinematic' or 'full'
+            collision_risky_ids_kin = analyzer.predict_collision(boxes=boxes, ids=ids)
+        accident_state.cleanup_old_accidents(frame_count)
+
 
         # Ризик зіткнення за кінематичними ознаками (без LSTM)
         collision_risky_ids_kin = analyzer.predict_collision(boxes=boxes, ids=ids)

@@ -18,7 +18,7 @@ class AccidentStateTracker:
         self.accident_lifetime = Config.ACCIDENT_LIFETIME
 
         # Мінімальна кількість високих скорів для підтвердження
-        self.confirmation_threshold = 3
+        self.confirmation_threshold = 2
 
     def update_score(self, track_id: int, score: float, frame_number: int):
         """Оновлює історію скорів для track_id"""
@@ -63,8 +63,8 @@ class AccidentStateTracker:
             avg_thresh = 0.93
             min_thresh = 0.90
         else:
-            avg_thresh = 0.85
-            min_thresh = 0.75
+            avg_thresh = 0.75
+            min_thresh = 0.65
 
         # ── LSTM знижує поріг для БУДЬ-ЯКОГО сценарію (додано втрачену логіку) ──
         if lstm_risk >= 0.5:
