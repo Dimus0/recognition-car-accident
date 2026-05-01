@@ -43,13 +43,13 @@ def load_models(DEVICE,CLASSIFIER_WEIGHTS_PATH,YOLO_MODEL_PATH):
     yolo.to(DEVICE)
 
     deepsort = DeepSort(
-        max_age=45,              # ЗБІЛЬШЕНО: Чекаємо 45 кадрів (1.5 сек), якщо YOLO загубив авто, перш ніж вбити трек
-        n_init=4,                # ЗБІЛЬШЕНО: Об'єкт має бути впевнено знайдений 4 кадри поспіль, щоб відсіяти "фантоми"
-        max_iou_distance=0.7,    # Залишаємо стандарт
-        max_cosine_distance=0.3, # Залишаємо (відповідає за порівняння візуальної схожості)
-        nn_budget=30,            # Залишаємо (скільки попередніх кадрів авто пам'ятає мережа)
-        embedder="mobilenet",    # ДОДАНО (Опціонально): Вказує DeepSort використовувати легку нейромережу для розрізнення машин за виглядом
-        half=True,                # ДОДАНО: Прискорює роботу на GPU,
+        max_age=Config.DEEPSORT_MAX_AGE,
+        n_init=Config.DEEPSORT_N_INIT, 
+        max_iou_distance=Config.DEEPSORT_MAX_IOU_DISTANCE,
+        max_cosine_distance=Config.DEEPSORT_MAX_COSINE_DISTANCE, 
+        nn_budget=Config.DEEPSORT_NN_BUDGET,
+        embedder="mobilenet",    
+        half=True,
         nms_max_overlap=0.4,
     )
     
@@ -644,10 +644,10 @@ def build_accident_description(accident_objects, frame_count, fps, camera_id="",
     avg_confidence = sum(all_confidences) / len(all_confidences) if all_confidences else 0.0
     
     # Визначаємо рівень небезпеки
-    if max_confidence > 0.95:
+    if max_confidence > 0.89:
         severity = "🔴CRITICAL"
         severity_ua = "🔴КРИТИЧНИЙ"
-    elif max_confidence > 0.85:
+    elif max_confidence > 0.80:
         severity = "🟠HIGH"
         severity_ua = "🟠ВИСОКИЙ"
     else:

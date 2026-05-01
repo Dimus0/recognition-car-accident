@@ -28,14 +28,13 @@ from modules.services.eval_collector import EvalDataCollector
 ROI_MAPPING = {
     "accident_video_v1.mp4": [(989, 899), (1568, 924), (1350, 313), (1199, 299)],
     "accident_video_v3.mp4": [(9, 216), (19, 996), (1450, 791), (511, 230)], # MAIN
-    "accident_video_v5.mp4": [(2, 427), (895, 506), (824, 126), (713, 86), (492, 68), (2, 426)],
     "accident_video_v6.mp4": [(253, 449), (291, 544), (688, 597), (992, 491), (988, 349), (850, 252), (634, 211), (346, 272), (252, 449)],
-    "accident_video_v7.mp4": [(366, 239), (812, 275), (912, 709), (0, 653), (3, 418)],
+    "accident_video_v7.mp4": [(0, 425), (0, 710), (865, 718), (840, 357), (741, 291), (739, 180), (537, 161), (0, 424)],
     "accident_video_v8.mp4": [(909, 74), (1276, 154), (460, 717), (0, 331), (910, 70)],
     "accident_video_v10.mp4": [(262, 116), (244, 601), (1274, 409), (791, 108)],
     "noaccident_video_v1.mp4": [(931, 1074), (120, 956), (816, 591), (1025, 597)],
     "noaccident_video_v2.mp4": [(6, 822), (860, 836), (897, 579), (554, 566), (4, 752), (3, 818)],
-    "nonaccident_video_v3.mp4": [(3, 633), (633, 641), (633, 424), (474, 429), (3, 632)],
+    "noaccident_video_v3.mp4": [(3, 633), (633, 641), (633, 424), (474, 429), (3, 632)],
 
 }
 video_name = os.path.basename(Config.VIDEO_PATH)
@@ -86,7 +85,6 @@ logger.info(
 )
 
 motion_lstm = load_motion_lstm(Config.LSTM_MODEL_PATH, Config.LSTM_SCALER_PATH, Config.DEVICE)
-logger.info(f"Models loaded successfully. MotionLSTM: {'ON' if motion_lstm else 'OFF'}")
 
 
 transform = transforms.Compose([
@@ -96,27 +94,6 @@ transform = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
-def _distance_based_trigger(boxes: list, ids: list, threshold: float = 80.0) -> set:
-    """
-    Baseline mode trigger: mark pairs of vehicles whose bounding-box centres
-    are closer than *threshold* pixels as risky — no kinematic model involved.
-    O(N²) but N is small (≤ 30 vehicles per ROI in practice).
-    """
-    risky: set = set()
-    n = len(ids)
-    if n < 2:
-        return risky
-    cx = [(b[0] + b[2]) * 0.5 for b in boxes]
-    cy = [(b[1] + b[3]) * 0.5 for b in boxes]
-    thr2 = threshold * threshold
-    for i in range(n):
-        for j in range(i + 1, n):
-            dx = cx[i] - cx[j]
-            dy = cy[i] - cy[j]
-            if dx * dx + dy * dy < thr2:
-                risky.add(ids[i])
-                risky.add(ids[j])
-    return risky
 
 """
     ============================= MAIN PIPELINE =============================
@@ -124,8 +101,21 @@ def _distance_based_trigger(boxes: list, ids: list, threshold: float = 80.0) -> 
 
 def accident_detection(input_video):
 
+    current_ablation = Config.ABLATION_MODE.lower().strip()
+    use_kinematic = current_ablation in ("kinematic", "full")
+    use_lstm = current_ablation in ("lstm_only", "full") and motion_lstm is not None
+    active_lstm = motion_lstm if use_lstm else None
+
+    logger.info(f"Dynamic Run: ABLATION={current_ablation} | Kinematic={use_kinematic} | LSTM={use_lstm}")
+
+    video_basename = os.path.basename(input_video)
+    video_name_no_ext = os.path.splitext(video_basename)[0] 
+    
+    gt_dir = os.path.dirname(Config.GROUND_TRUTH_PATH)
+    dynamic_gt_path = os.path.join(gt_dir, f"gt_{video_name_no_ext}.json")
+
     metrics_tracker = MetricsTracker(
-        ground_truth_path=Config.GROUND_TRUTH_PATH,
+        ground_truth_path=dynamic_gt_path,
         auto_generate_gt=True)
 
     cap = cv2.VideoCapture(input_video)
@@ -168,22 +158,15 @@ def accident_detection(input_video):
     frame_count = 0
     cnn_results_cache = {}
 
-    ablation = Config.ABLATION_MODE
-    effective_lstm = motion_lstm if ablation in ('lstm_only', 'full') else None
-    logger.info(
-        "[ABLATION] mode=%r | LSTM=%s | Kinematic=%s | CNN=ON",
-        ablation,
-        'ON' if effective_lstm else 'OFF',
-        'OFF' if ablation == 'lstm_only' else 'ON',
-    )
-
     notified_accidents: set = set()
     notification_threads: list = []
 
     GHOST_MAX_AGE = 10
     ghost_tracks: dict = {}
 
-    logger.info(f"Starting processing: {total_frames} frames | LSTM: {'ON' if motion_lstm else 'OFF'}")
+    logger.info(f"Starting processing: {total_frames} frames | "
+                f"Kinematic={'ON' if use_kinematic else 'OFF'} | "
+                f"LSTM={'ON' if active_lstm else 'OFF'}")
 
     """
         START PROCESS
@@ -249,6 +232,7 @@ def accident_detection(input_video):
 
         boxes = []
         ids = []
+        t_confs = []
         active_tracks_objects = []
 
         for track in tracks:
@@ -264,6 +248,9 @@ def accident_detection(input_video):
             ids.append(tid)
             active_tracks_objects.append(track)
 
+            conf = track.det_conf if track.det_conf is not None else 0.5
+            t_confs.append(conf)
+
             if accident_state.is_accident_active(tid, frame_count):
                 ghost_tracks[tid] = {"bbox": (l, t, r, b), "frame": frame_count}
         
@@ -278,7 +265,7 @@ def accident_detection(input_video):
                 # Трек зник — додаємо як ghost
                 ghost_bbox_override[ghost_tid] = info["bbox"]
 
-        eval_collector.record_tracks(frame_count, ids, boxes)
+        eval_collector.record_tracks(frame_count, ids, boxes,confs=t_confs)
         # --- Оцінка трекінгу (MOTA/IDF1) має бути ТУТ, коли boxes/ids вже заповнені ---
         predicted_tracks = [
             (tid, box, 1.0)
@@ -296,19 +283,11 @@ def accident_detection(input_video):
         metrics_tracker.update_tracking_metrics(ids, analyzer.track_history)
         metrics_tracker.record_tracks(frame_count, boxes, ids)
 
-        if ablation == 'baseline':
-            collision_risky_ids_kin = _distance_based_trigger(
-                boxes, ids, threshold=Config.ANALYZER_COLLISION_DIST
-            )
-        elif ablation == 'lstm_only':
-            collision_risky_ids_kin = set()   # LSTM бере на себе всю відповідальність
-        else:  # 'kinematic' or 'full'
+        # Ризик зіткнення за кінематичними ознаками (тільки якщо увімкнено для ablation)
+        if use_kinematic:
             collision_risky_ids_kin = analyzer.predict_collision(boxes=boxes, ids=ids)
-        accident_state.cleanup_old_accidents(frame_count)
-
-
-        # Ризик зіткнення за кінематичними ознаками (без LSTM)
-        collision_risky_ids_kin = analyzer.predict_collision(boxes=boxes, ids=ids)
+        else:
+            collision_risky_ids_kin = set()
         accident_state.cleanup_old_accidents(frame_count)
 
         lstm_risk_scores = {}
@@ -316,20 +295,20 @@ def accident_detection(input_video):
         lstm_predicted_positions = {}
         lstm_high_risk_ids = set()
 
-        if motion_lstm:
+        if active_lstm:
 
             for tid in ids:
                 history = analyzer.track_history.get(tid, [])
-                motion_lstm.update_from_history(tid, history)
+                active_lstm.update_from_history(tid, history)
 
-            motion_lstm.run_batch(ids)
+            active_lstm.run_batch(ids)
 
-            lstm_risk_scores = motion_lstm.get_collision_risk_ttc(ids)
+            lstm_risk_scores = active_lstm.get_collision_risk_ttc(ids)
             lstm_risk_ids = set(lstm_risk_scores.keys())
 
             metrics_tracker.update_lstm_metrics(lstm_risk_scores)
 
-            lstm_predicted_positions = motion_lstm.get_predicted_positions(ids, steps=20)
+            lstm_predicted_positions = active_lstm.get_predicted_positions(ids, steps=20)
             if lstm_predicted_positions:
                 analyzer.update_predicted_positions(lstm_predicted_positions)
 
@@ -372,7 +351,7 @@ def accident_detection(input_video):
                 x1, y1, x2, y2 = boxes[idx]
                 is_ghost = False
 
-            if not is_ghost:
+            if not is_ghost and use_kinematic:
                 is_sudden_stop = analyzer.detect_sudden_stop(tid, boxes, ids)
             else:
                 # Ghost треки не мають поточних boxes → використовуємо кешоване значення
@@ -444,7 +423,7 @@ def accident_detection(input_video):
                 # lstm
                 lstm_risk = lstm_risk_scores.get(tid,0.0)
                 is_kinematic = tid in collision_risky_ids_kin
-                risk_details = f"LSTM_Risk: {lstm_risk:.3f}" if motion_lstm else "LSTM: OFF"
+                risk_details = f"LSTM_Risk: {lstm_risk:.3f}" if active_lstm else "LSTM: OFF"
                 if is_kinematic:
                     risk_details += " | Kinematic: YES"
                 else:
@@ -741,10 +720,8 @@ def accident_detection(input_video):
                     if obj['type'] == 'primary' and obj['track_id'] not in notified_accidents
                 }
 
-                if new_ids:
+                if new_ids and accident_description["max_confidence"] >= 0.80:
                     notified_accidents.update(new_ids)
-                    # video_path вже відомий (trigger повертає майбутній шлях),
-                    # затримка потрібна щоб файл встиг записатись
                     post_delay = 4.0 if accident_video_path is None else 4.0
                     t = schedule_notification(
                         photo_path=accident_photo_path,
@@ -754,7 +731,9 @@ def accident_detection(input_video):
                         poll_timeout=240.0,
                     )
                     notification_threads.append(t)
-                    logger.info(f"[NOTIFICATION SCHEDULED] IDs={new_ids} delay={post_delay}s")
+                    logger.info(f"[NOTIFICATION SCHEDULED] IDs={new_ids} delay={post_delay}s | Conf={accident_description['max_confidence']:.2f}")
+                elif new_ids:
+                    logger.info(f"[NOTIFICATION SKIPPED] Confidence {accident_description['max_confidence']:.2f} <= 0.85")
         
         collision_warnings = len(collision_risky_ids_total)
         sudden_stops = sum(1 for tid in ids if sudden_stop_cache.get(tid, False))
@@ -765,13 +744,13 @@ def accident_detection(input_video):
             collision_warnings,
             sudden_stops
         )
-        if motion_lstm:
-            frame = motion_lstm.draw_predictions(
+        if active_lstm:
+            frame = active_lstm.draw_predictions(
                 frame, ids, accident_ids_set | lstm_risk_ids, steps=15
             )
 
-        if motion_lstm:
-            motion_lstm.cleanup(ids)
+        if active_lstm:
+            active_lstm.cleanup(ids)
 
 
         # 2) Боксинг, підписи, спостережні траєкторії
@@ -848,7 +827,7 @@ def accident_detection(input_video):
     print(f"Всього аварій:          {summary['total_accidents']}") # Не правильно рахує
     print(f"Всього авто задіяно:    {summary.get('total_vehicles_involved', 0)}")
     print(f"Унікальних авто:        {summary.get('unique_vehicles', 0)}")
-    if motion_lstm:
+    if active_lstm:
         print(f"LSTM попереджень: {len(lstm_risk_ids)} (останній кадр)")
     print(f"Кліпів збережено: {video_buffer.clip_index}")
     print(f"Збережено до:           {accident_capture.accidents_dir}")

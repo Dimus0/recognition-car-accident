@@ -47,27 +47,36 @@ class MetricsTracker:
 
     def _load_ground_truth(self) -> Optional[Dict]:
         if not os.path.exists(self.ground_truth_path):
-            print(f"⚠️ Ground truth не знайдено: {self.ground_truth_path} -> Відбувається створення...")
-            empty_gt = {
-                "meta": {"note": "Auto-generated empty Ground Truth"},
-                "frame_annotations": {}
-            }
-            with open(self.ground_truth_path, "w", encoding="utf-8") as f:
-                json.dump(empty_gt, f, indent=4, ensure_ascii=False)
+            print(f"⚠️ GT не знайдено: {self.ground_truth_path}")
+            # BUG FIX #1a: НЕ створюємо порожній файл на диску —
+            # це призводило до того, що _auto_generate_ground_truth() потім
+            # перезаписував порожній файл своїм pseudo-GT, який наступний
+            # запуск читав як "реальний GT" → ідентичні метрики для всіх конфігурацій.
             return None
-        
+
         if os.path.getsize(self.ground_truth_path) == 0:
             return None
+
         with open(self.ground_truth_path, "r", encoding="utf-8") as f:
             try:
                 data = json.load(f)
-                # Якщо файл є, але frame_annotations порожній — теж None
-                if not data.get("frame_annotations"):
-                    return None
-                return data
             except json.JSONDecodeError:
                 print("⚠️ Ground truth некоректний JSON, пропускаю")
                 return None
+
+        # BUG FIX #1b: Якщо файл є auto-generated pseudo-GT з попереднього запуску —
+        # відкидаємо його як "реальний GT".  Без цієї перевірки кожен наступний
+        # запуск читав pseudo-GT і оцінював модель проти власних передбачень.
+        if data.get("auto_generated"):
+            print("ℹ️  Знайдено pseudo-GT (auto_generated=true) — ігнорується як real GT")
+            return None
+
+        if not data.get("frame_annotations"):
+            return None
+
+        print(f"✅ Реальний GT завантажено: {self.ground_truth_path} "
+              f"({len(data['frame_annotations'])} кадрів)")
+        return data
 
     # ----------------------------------------------------------
     #  Reset / Init
@@ -615,25 +624,59 @@ class MetricsTracker:
         """
         Обчислює Precision, Recall, F1, Accuracy, ROC-AUC, PR-AUC
         для детекції аварій на рівні кадрів.
-        Потребує ground truth або використовує самозгенеровані мітки.
+
+        BUG FIX #3 (self-evaluation):
+        --------------------------------
+        Стара логіка: labels = all_frame_labels, де label=1 виставлявся коли
+        МОДЕЛЬ детектувала аварію. Тобто мітки будувались із виходів моделі,
+        а не з розмітки. ROC-AUC = 0.9945 для ВСІХ конфігурацій — не тому що
+        модель хороша, а тому що вона оцінювала сама себе.
+
+        Нова логіка:
+        - Якщо є РЕАЛЬНИЙ GT (не auto_generated) → будуємо labels з нього
+          побитово по frame_num. Це справжня зовнішня оцінка.
+        - Якщо реального GT немає → fallback на model-generated labels,
+          але попереджаємо що це pseudo-evaluation.
         """
-        scores = self.metrics["accidents"]["all_frame_scores"]
-        labels = self.metrics["accidents"]["all_frame_labels"]
-        
-
-        # Якщо немає ground truth — fallback: score > threshold = label
-        if not self.ground_truth and not scores:
+        scores_raw = self.metrics["accidents"]["all_frame_scores"]
+        if len(scores_raw) < 2:
             return
 
-        if len(scores) < 2 or len(labels) < 2:
-            return
+        total_frames = len(scores_raw)
+        scores = np.array(scores_raw, dtype=float)
 
-        # Вирівнюємо довжини (можуть відрізнятись через різні шляхи запису)
+        is_real_gt = (
+            self.ground_truth is not None
+            and not self.ground_truth.get("auto_generated", False)
+            and "frame_annotations" in self.ground_truth
+        )
+
+        if is_real_gt:
+            # ── Реальна зовнішня оцінка ────────────────────────────────────────
+            # GT розмітка по frame_num → вектор labels довжиною total_frames
+            labels = np.zeros(total_frames, dtype=int)
+            for fstr, ann in self.ground_truth["frame_annotations"].items():
+                if ann.get("accident", False):
+                    fn = int(fstr)
+                    # frame_count в console.py починається з 1
+                    if 1 <= fn <= total_frames:
+                        labels[fn - 1] = 1
+            print("ℹ️  compute_classification_metrics: використовується РЕАЛЬНИЙ GT")
+        else:
+            # ── Pseudo-evaluation (model vs model) ─────────────────────────────
+            labels_raw = self.metrics["accidents"]["all_frame_labels"]
+            n = min(total_frames, len(labels_raw))
+            labels = np.array(labels_raw[:n], dtype=int)
+            scores = scores[:n]
+            print("⚠️  compute_classification_metrics: GT відсутній — pseudo-evaluation "
+                  "(model vs model). Метрики оптимістичні.")
+
         n = min(len(scores), len(labels))
-        scores, labels = np.array(scores[:n], dtype=float), np.array(labels[:n], dtype=int)
+        scores, labels = scores[:n], labels[:n]
 
         if len(np.unique(labels)) < 2:
-            return   # тільки один клас — метрики безглузді
+            print("⚠️  compute_classification_metrics: у labels тільки один клас — пропускаємо.")
+            return
 
         # ROC
         fpr, tpr, thresholds = roc_curve(labels, scores)
@@ -651,7 +694,7 @@ class MetricsTracker:
         self.metrics["precision_recall_data"]["thresholds"]        = pr_thresh.tolist()
         self.metrics["precision_recall_data"]["average_precision"] = round(float(ap), 4)
 
-        # При фіксованому порозі 0.5
+        # При фіксованому порозі CONF_ACCIDENT_LOW
         predicted_labels = (scores >= Config.CONF_ACCIDENT_LOW).astype(int)
         tp = int(np.sum((predicted_labels == 1) & (labels == 1)))
         fp = int(np.sum((predicted_labels == 1) & (labels == 0)))
@@ -664,12 +707,14 @@ class MetricsTracker:
         accuracy   = (tp + tn) / (tp + fp + fn + tn + 1e-9)
         fpr_val    = fp / (fp + tn + 1e-9)
 
-        self.metrics["evaluation"]["precision"]          = round(float(precision), 4)
-        self.metrics["evaluation"]["recall"]             = round(float(recall), 4)
-        self.metrics["evaluation"]["f1_score"]           = round(float(f1), 4)
-        self.metrics["evaluation"]["accuracy"]           = round(float(accuracy), 4)
+        self.metrics["evaluation"]["precision"]           = round(float(precision), 4)
+        self.metrics["evaluation"]["recall"]              = round(float(recall), 4)
+        self.metrics["evaluation"]["f1_score"]            = round(float(f1), 4)
+        self.metrics["evaluation"]["accuracy"]            = round(float(accuracy), 4)
         self.metrics["evaluation"]["false_positive_rate"] = round(float(fpr_val), 4)
         self.metrics["evaluation"]["true_positive_rate"]  = round(float(recall), 4)
+        # Зберігаємо прапор щоб ablation runner знав чи це реальна оцінка
+        self.metrics["evaluation"]["used_real_gt"]        = bool(is_real_gt)
 
     # ----------------------------------------------------------
     #  NEW: Compute latency percentiles
@@ -708,7 +753,11 @@ class MetricsTracker:
         Будує pseudo-GT із збережених predicted треків:
         якщо хоча б один трек у кадрі має accident_confidence >= 0.86,
         кадр позначається як аварійний.
-        Зберігає GT у файл (якщо ground_truth_path задано) для повторного використання.
+
+        BUG FIX #2: Pseudo-GT зберігається у ОКРЕМИЙ файл з префіксом 'pseudo_',
+        НІКОЛИ не перезаписує реальний ground_truth_path.
+        Це запобігає ситуації, коли наступний запуск читає pseudo-GT як реальну
+        розмітку і оцінює модель проти власних передбачень.
         """
         if not self.tracking_data["predictions"]:
             return
@@ -728,17 +777,64 @@ class MetricsTracker:
                 "accident": conf >= 0.86,
             }
 
-        self.ground_truth = {"frame_annotations": annotations,
-                             "auto_generated": True}
+        self.ground_truth = {
+            "frame_annotations": annotations,
+            "auto_generated": True,   # маркер — не читати як реальний GT
+        }
 
         if self.ground_truth_path:
             try:
-                os.makedirs(os.path.dirname(self.ground_truth_path), exist_ok=True)
-                with open(self.ground_truth_path, "w", encoding="utf-8") as f:
+                gt_dir  = os.path.dirname(self.ground_truth_path)
+                gt_base = os.path.splitext(os.path.basename(self.ground_truth_path))[0]
+                # BUG FIX #2: окремий шлях —ніколи не перезаписуємо реальний GT
+                pseudo_path = os.path.join(gt_dir, f"pseudo_{gt_base}.json")
+                os.makedirs(gt_dir, exist_ok=True)
+                with open(pseudo_path, "w", encoding="utf-8") as f:
                     json.dump(self.ground_truth, f, indent=2, ensure_ascii=False)
-                print(f"✅ Pseudo-GT збережено: {self.ground_truth_path}")
+                print(f"✅ Pseudo-GT збережено (окремо): {pseudo_path}")
             except Exception as e:
                 print(f"⚠️ Не вдалось зберегти pseudo-GT: {e}")
+
+    def _populate_tracking_gt_from_gt(self):
+        """
+        BUG FIX #4 (MOTA/IDF1 = 0):
+        --------------------------------
+        Проблема: під час головного циклу processing `self.ground_truth` = None
+        (GT генерується тільки в finalize() → _auto_generate_ground_truth()).
+        Тому `update_tracking_for_evaluation()` ніколи не заповнювала
+        `tracking_data["ground_truth"]` → у `compute_mota_idf1()` total_gt = 0
+        → MOTA = 0, IDF1 = 0 для всіх конфігурацій.
+
+        Виправлення: після того як GT стає доступним (реальний або pseudo),
+        ретроактивно заповнюємо `tracking_data["ground_truth"]` з анотацій GT,
+        потім викликаємо compute_mota_idf1() вже з коректними GT-треками.
+        """
+        if not self.ground_truth:
+            return
+
+        ann = self.ground_truth.get("frame_annotations", {})
+        if not ann:
+            return
+
+        filled = 0
+        for frame_str, frame_ann in ann.items():
+            frame_num = int(frame_str)
+            vehicles  = frame_ann.get("vehicles", [])
+            bboxes    = frame_ann.get("bboxes", [])
+            if not vehicles or not bboxes:
+                continue
+            # Формат: list of (tid, bbox, conf=1.0)
+            gt_tracks = [
+                (int(vid), tuple(map(int, bbox)), 1.0)
+                for vid, bbox in zip(vehicles, bboxes)
+                if len(bbox) == 4
+            ]
+            if gt_tracks:
+                self.tracking_data["ground_truth"][frame_num] = gt_tracks
+                filled += 1
+
+        print(f"ℹ️  _populate_tracking_gt_from_gt: заповнено GT для {filled} кадрів "
+              f"({'real' if not self.ground_truth.get('auto_generated') else 'pseudo'} GT)")
 
     # ----------------------------------------------------------
     #  Finalize
@@ -818,14 +914,18 @@ class MetricsTracker:
                 self.metrics["performance"]["memory_usage_mb"] = 0.0
 
         # Розширені обчислення
-        # BUG FIX: auto_generate_gt — якщо GT не завантажено, будуємо pseudo-GT
+        # auto_generate_gt — якщо GT не завантажено, будуємо pseudo-GT
         # з впевнених передбачень (score > 0.86). Дозволяє рахувати mAP/MOTA
         # без ручної розмітки. Результати будуть оптимістичними, але корисними
         # для відлагодження моделі.
         if self.ground_truth is None and self.auto_generate_gt:
             self._auto_generate_ground_truth()
 
+        # BUG FIX #4: Ретроактивно заповнюємо GT-треки ДО compute_mota_idf1.
+        # Раніше tracking_data["ground_truth"] залишався порожнім бо GT
+        # ставав доступним тільки тут, після основного циклу.
         if self.ground_truth:
+            self._populate_tracking_gt_from_gt()
             self.compute_map()
             self.compute_mota_idf1()
 

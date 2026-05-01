@@ -60,11 +60,14 @@ class AccidentStateTracker:
 
         # ── Визначаємо базові пороги згідно з матрицею (виправлено значення) ──
         if is_sudden and not is_kinematic:
-            avg_thresh = 0.93
-            min_thresh = 0.90
-        else:
+            avg_thresh = 0.90
+            min_thresh = 0.79
+        elif is_kinematic or lstm_risk >= 0.5:
             avg_thresh = 0.75
             min_thresh = 0.65
+        else:
+            avg_thresh = 0.90
+            min_thresh = 0.80
 
         # ── LSTM знижує поріг для БУДЬ-ЯКОГО сценарію (додано втрачену логіку) ──
         if lstm_risk >= 0.5:

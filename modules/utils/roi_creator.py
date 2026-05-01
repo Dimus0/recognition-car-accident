@@ -83,7 +83,7 @@ class ROISelector:
 
 if __name__ == "__main__":
     # Вкажіть шлях до нового відео тут:
-    VIDEO_FILE = r"E:\personalproject\bachelor\data\video\accident_video_v8.mp4"
+    VIDEO_FILE = r"E:\personalproject\bachelor\data\video\accident_video_v7.mp4"
     
     selector = ROISelector(VIDEO_FILE)
     selector.run()

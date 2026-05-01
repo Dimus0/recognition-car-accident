@@ -47,6 +47,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+from modules.config.config import Config 
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -83,9 +84,9 @@ def _fresh_deepsort():
     """Instantiate a clean DeepSort tracker (no stale state between runs)."""
     from deep_sort_realtime.deepsort_tracker import DeepSort
     return DeepSort(
-        max_age=45, n_init=4,
-        max_iou_distance=0.7, max_cosine_distance=0.3,
-        nn_budget=30, embedder="mobilenet",
+        max_age=Config.DEEPSORT_MAX_AGE, n_init=Config.DEEPSORT_N_INIT,
+        max_iou_distance=Config.DEEPSORT_MAX_IOU_DISTANCE, max_cosine_distance=Config.DEEPSORT_MAX_COSINE_DISTANCE,
+        nn_budget=Config.DEEPSORT_NN_BUDGET, embedder="mobilenet",
         half=True, nms_max_overlap=0.4,
     )
 

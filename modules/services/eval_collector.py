@@ -86,7 +86,7 @@ class EvalDataCollector:
     #  DeepSort
     # ══════════════════════════════════════════════════════════════
 
-    def record_tracks(self, frame_num: int, ids: List[int], boxes: List[Tuple]):
+    def record_tracks(self, frame_num: int, ids: List[int], boxes: List[Tuple], confs: List[float]=None):
         """
         Записує стан треків і виявляє евристичні ID switches.
 
@@ -104,6 +104,8 @@ class EvalDataCollector:
         """
         self._frames_processed += 1
         current_ids = set(ids)
+        if confs is None or len(confs) != len(ids):
+            confs = [0.5] * len(ids)
 
         for tid in ids:
             self._track_first_frame.setdefault(tid, frame_num)
@@ -189,8 +191,9 @@ class EvalDataCollector:
                     "bbox": [int(v) for v in box],
                     "cx":   centers.get(tid, (0, 0))[0],
                     "cy":   centers.get(tid, (0, 0))[1],
+                    "conf": round(float(c), 4) 
                 }
-                for tid, box in zip(ids, boxes)
+                for tid, box, c in zip(ids, boxes, confs) 
             ],
             "new_ids":           sorted(new_ids),
             "lost_ids":          sorted(lost_ids),
